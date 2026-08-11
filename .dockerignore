@@ -1,0 +1,17 @@
+# Держим build-контекст маленьким: для образа нужен только frontend/.
+.git
+.claude
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+
+# Django-часть в образ витрины не входит.
+backend
+
+# Дампы БД и бэкапы.
+*.sql
+*.sqlite3
+*.json.gz
+*.bak
+*.bak.*

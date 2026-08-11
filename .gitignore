@@ -1,0 +1,47 @@
+# Django-часть магазина ведётся отдельно и в этот репозиторий не попадает.
+/backend/
+
+# Зависимости и сборка
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Переменные окружения. Коммитим только .env.example.
+.env
+.env.local
+.env.*.local
+
+# Логи
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# Дампы и бэкапы БД — держим вне репозитория при любом раскладе.
+*.sql
+*.sqlite3
+*.dump
+backups/
+*.bak
+*.bak.*
+
+# Секреты и ключи
+*.pem
+*.key
+*.p12
+id_rsa*
+.ssh/
+
+# Редакторы и инструменты
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
