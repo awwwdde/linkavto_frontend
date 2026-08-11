@@ -5,11 +5,12 @@ import type { Address, DeliveryType, PickupProvider } from '@/shared/api/types'
 import { t } from '@/shared/i18n'
 import { cn } from '@/shared/lib/cn'
 import { Button, Input, Modal, toast } from '@/shared/ui'
-import { IconAddress, IconGarage, IconMail, IconPackage, IconTypeTruck } from '@/shared/ui/Icon'
+import { IconAddress, IconGarage, IconTypeTruck } from '@/shared/ui/Icon'
 import { usePrefersReducedMotion } from '@/shared/lib/media'
 import { MOSCOW_CENTER, pointForAddress, reverseGeocode, searchAddress, type GeoPoint } from './geocode'
 import { TileMap, type LatLng, type MapMarker } from './TileMap'
 import { DEFAULT_PICKUP_PROVIDER, findPickupPoint, PICKUP_PROVIDERS, pickupPoints, type PickupPoint } from './pickup'
+import { ProviderLogo } from './ProviderLogo'
 import { useAddressStore, type AddressDraft } from './store'
 
 const pickupLabel = (point: PickupPoint) => `${point.name} — ${point.address}`
@@ -84,7 +85,7 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
         position: { lat: item.lat, lng: item.lng },
         label: `${item.name}, ${item.address}`,
         active: point?.name === item.name,
-        icon: item.provider === 'post' ? <IconMail width={16} height={16} /> : <IconPackage width={16} height={16} />,
+        icon: <ProviderLogo provider={item.provider} className="h-4 w-6" />,
         onSelect: () => setPoint(item),
       }))
     : []
@@ -292,15 +293,13 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
                         title={provider.label}
                         className={cn(
                           'flex h-9 items-center gap-1.5 rounded-control px-2.5 text-xs font-semibold',
-                          'transition-colors duration-[--duration-fast]',
-                          on ? 'bg-accent text-white' : 'bg-paper text-ink-muted hover:text-ink',
+                          'transition-[background-color,opacity] duration-[--duration-fast]',
+                          // Выключенный оператор глушится прозрачностью: заливать
+                          // цветное лого белым текстом, как раньше иконку, нельзя.
+                          on ? 'bg-paper text-ink ring-1 ring-accent' : 'bg-paper/70 text-ink-muted opacity-60 hover:opacity-100',
                         )}
                       >
-                        {provider.value === 'post' ? (
-                          <IconMail width={14} height={14} />
-                        ) : (
-                          <IconPackage width={14} height={14} />
-                        )}
+                        <ProviderLogo provider={provider.value} className="h-3.5 w-6" />
                         {provider.short}
                       </button>
                     )

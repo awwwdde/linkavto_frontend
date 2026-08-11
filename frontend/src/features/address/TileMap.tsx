@@ -321,11 +321,13 @@ export function TileMap({ center, zoom: initialZoom = 11, markers = [], pin, onP
               onClick={() => marker.onSelect?.()}
               style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
               className={cn(
-                'absolute -ml-4 -mt-4 flex h-8 w-8 items-center justify-center rounded-control border shadow-float',
-                'transition-colors duration-[--duration-fast]',
+                'absolute -ml-4 -mt-4 flex h-8 w-8 items-center justify-center rounded-control border bg-surface shadow-float',
+                'transition-[transform,border-color,box-shadow] duration-[--duration-fast]',
+                // Подложка всегда светлая: внутри фирменное лого, заливать его
+                // акцентом нельзя. Выбранный маркер выделяем обводкой и размером.
                 marker.active
-                  ? 'z-10 border-accent bg-accent text-white'
-                  : 'border-line bg-surface text-ink hover:border-ink-muted',
+                  ? 'z-10 scale-110 border-accent ring-2 ring-accent'
+                  : 'border-line hover:border-ink-muted',
               )}
             >
               {marker.icon}
