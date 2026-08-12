@@ -8,8 +8,15 @@ import { Button, Input, Modal, toast } from '@/shared/ui'
 import { IconAddress, IconGarage, IconTypeTruck } from '@/shared/ui/Icon'
 import { usePrefersReducedMotion } from '@/shared/lib/media'
 import { MOSCOW_CENTER, pointForAddress, reverseGeocode, searchAddress, type GeoPoint } from './geocode'
-import { TileMap, type LatLng, type MapMarker } from './TileMap'
-import { DEFAULT_PICKUP_PROVIDER, findPickupPoint, PICKUP_PROVIDERS, pickupPoints, type PickupPoint } from './pickup'
+import { TileMap, type LatLng, type MapBounds, type MapMarker } from './TileMap'
+import {
+  DEFAULT_PICKUP_PROVIDER,
+  fetchPickupPoints,
+  findPickupPoint,
+  PICKUP_PROVIDERS,
+  pickupPoints,
+  type PickupPoint,
+} from './pickup'
 import { ProviderLogo } from './ProviderLogo'
 import { useAddressStore, type AddressDraft } from './store'
 
@@ -46,6 +53,12 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
   const [point, setPoint] = useState<PickupPoint | null>(() => findPickupPoint(initial?.pickup_point_name ?? ''))
   const [providers, setProviders] = useState<PickupProvider[]>(() => PICKUP_PROVIDERS.map((p) => p.value))
 
+  const [bounds, setBounds] = useState<MapBounds | null>(null)
+  const [points, setPoints] = useState<PickupPoint[]>(() => pickupPoints())
+  const [pointsStatus, setPointsStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  // Меняем, чтобы перезапустить загрузку после ошибки.
+  const [retry, setRetry] = useState(0)
+
   const [suggestions, setSuggestions] = useState<GeoPoint[]>([])
 
   const isPickup = tab === 'pickup'
@@ -72,6 +85,30 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
     }
   }, [query, suggestOpen, isPickup, geo?.address])
 
+  // Догрузка пунктов под текущий вид карты. Пауза гасит шквал запросов при
+  // перетаскивании, AbortController снимает предыдущий — иначе ответы приходят
+  // вперемешку и на карту садится устаревший набор.
+  useEffect(() => {
+    if (!isPickup || !bounds) return
+    const controller = new AbortController()
+    setPointsStatus('loading')
+    const timer = window.setTimeout(() => {
+      fetchPickupPoints(providers, bounds, controller.signal)
+        .then((list) => {
+          setPoints(list)
+          setPointsStatus('idle')
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          setPointsStatus('error')
+        })
+    }, 400)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [isPickup, bounds, providers, retry])
+
   // Центр карты — выбранная точка режима, иначе центр города. Ввод символов
   // центр не двигает: иначе карта дёргалась бы на каждую букву.
   const center = useMemo<LatLng>(() => {
@@ -80,7 +117,7 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
   }, [isPickup, point, geo])
 
   const markers: MapMarker[] = isPickup
-    ? pickupPoints(providers).map((item) => ({
+    ? points.map((item) => ({
         id: item.name,
         position: { lat: item.lat, lng: item.lng },
         label: `${item.name}, ${item.address}`,
@@ -171,9 +208,17 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
     )
   }
 
-  // Строка под полем — только для ПВЗ: адрес и режим работы выбранного пункта.
+  // Строка под полем — только для ПВЗ: выбранный пункт либо состояние загрузки.
   // У курьера подпись убрана, поэтому подсказка сюда больше не заводится.
-  const info = point ? `${point.address} · ${point.schedule}` : t('address.pickPointHint')
+  const info = point
+    ? `${point.address} · ${point.schedule}`
+    : pointsStatus === 'loading'
+      ? t('address.pointsLoading')
+      : pointsStatus === 'error'
+        ? t('address.pointsError')
+        : points.length === 0
+          ? t('address.pointsEmpty')
+          : t('address.pickPointHint')
 
   return (
     <>
@@ -245,6 +290,15 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
                   className="absolute inset-0 truncate text-xs text-ink-muted"
                 >
                   {info}
+                  {pointsStatus === 'error' ? (
+                    <button
+                      type="button"
+                      onClick={() => setRetry((value) => value + 1)}
+                      className="ml-1 font-medium text-accent hover:underline"
+                    >
+                      {t('address.pointsRetry')}
+                    </button>
+                  ) : null}
                 </motion.p>
               </AnimatePresence>
             </div>
@@ -252,7 +306,7 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
 
           {/* Без mt-auto: полей осталось мало, и прижатый к низу колонки текст
               висел бы в пустоте в паре сотен пикселей от поля адреса. */}
-          <p className="mt-1 text-[11px] leading-4 text-ink-muted">
+          <p className="mt-1 text-2xs text-ink-muted">
             {t('address.legalLead')}{' '}
             <Link to="/terms" className="text-accent hover:underline">
               {t('address.legalTerms')}
@@ -272,6 +326,7 @@ export function AddressPickerBody({ initial, onCancel, onDone }: BodyProps) {
           markers={markers}
           pin={!isPickup && geo ? { lat: geo.lat, lng: geo.lng } : null}
           onPick={isPickup ? undefined : pickOnMap}
+          onViewportChange={setBounds}
           overlay={
             <AnimatePresence initial={false}>
               {isPickup ? (

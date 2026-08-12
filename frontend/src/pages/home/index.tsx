@@ -205,6 +205,11 @@ export function Component() {
             заливает экран под fixed-шапкой. Нахлёст ≥ стартового радиуса. */}
         <motion.div className="relative -mt-6 bg-paper lg:-mt-40" style={seamStyle}>
           <Container className="flex flex-col gap-10 pt-8 pb-4 lg:gap-14 lg:pt-12">
+            {/* Первый экран занят рекламным блоком, поэтому видимого заголовка
+                у страницы нет. Скрытый h1 нужен и поиску, и скринридеру: без
+                него главная начиналась с h2. */}
+            <h1 className="sr-only">LINKAVTO — маркетплейс автозапчастей</h1>
+
             {/* Зона 2 */}
             <Reveal>
               <section className="flex flex-col gap-6">

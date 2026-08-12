@@ -5,7 +5,7 @@ import { t } from '@/shared/i18n'
 import { usePrefersReducedMotion } from '@/shared/lib/media'
 import { userInitials } from '@/shared/lib/initials'
 import { Container } from '@/shared/ui/Layout'
-import { IconCart, IconCatalog, IconGarage, IconHeart, IconSearch, IconUser } from '@/shared/ui/Icon'
+import { IconCart, IconCatalog, IconGarage, IconHeart, IconSearch, IconStore, IconUser } from '@/shared/ui/Icon'
 import { SmartSearch } from '@/features/search/SmartSearch'
 import { useCartCount } from '@/features/cart/store'
 import { useAuthStore, userDisplayName } from '@/features/auth/store'
@@ -67,6 +67,23 @@ function GarageButton({ className }: { className?: string }) {
     >
       <IconGarage />
     </button>
+  )
+}
+
+/**
+ * Вход для продавцов — рядом с адресом. Геометрия и стекло те же, что у пилюли
+ * адреса: пара слева читается как один блок, а не как два разных элемента.
+ * На узких экранах скрыт — там та же ссылка есть в подвале.
+ */
+function SellerPill() {
+  return (
+    <Link
+      to="/become-seller"
+      className="glass-chrome hidden h-14 shrink-0 items-center gap-2 rounded-pill border border-line px-4 text-base text-ink shadow-float transition-colors duration-[--duration-fast] hover:border-ink-muted lg:flex"
+    >
+      <IconStore width={18} height={18} className="text-icon" />
+      <span className="font-medium">{t('nav.becomeSeller')}</span>
+    </Link>
   )
 }
 
@@ -159,8 +176,9 @@ function DesktopHeader() {
 
       <Container>
         <div className="flex items-center gap-3 py-4">
-          {/* 1. Пилюля адреса — отдельно слева (§4а). */}
+          {/* 1. Пилюля адреса — отдельно слева (§4а), рядом вход для продавцов. */}
           <AddressPill />
+          <SellerPill />
 
           {/* 2. Основная пилюля — компактная, по центру; при поиске превращается
               в отдельное поле + панель подсказок (§4а, два прямоугольника). */}

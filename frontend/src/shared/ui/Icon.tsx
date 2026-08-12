@@ -27,6 +27,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Star,
+  Store,
   Tractor,
   Trash2,
   Truck,
@@ -85,6 +86,7 @@ export const IconPackage = make(Package) // пункт выдачи на кар�
 export const IconPhoto = make(ImageIcon) // плейсхолдер «нет фото» (§6)
 export const IconShare = make(Share2)
 export const IconArrowRight = make(ArrowRight) // «весь раздел» → ArrowRight (§4а)
+export const IconStore = make(Store) // «стать продавцом» в шапке
 
 /* --- Типы техники (§4а) --- */
 export const IconTypeCar = make(Car)

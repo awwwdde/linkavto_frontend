@@ -17,6 +17,14 @@ export interface MapMarker {
   onSelect?: () => void
 }
 
+/** Видимая область карты — по ней догружаются точки под текущий вид. */
+export interface MapBounds {
+  north: number
+  south: number
+  east: number
+  west: number
+}
+
 const TILE = 256
 const MIN_ZOOM = 4
 const MAX_ZOOM = 18
@@ -51,6 +59,8 @@ interface TileMapProps {
   onPick?: (position: LatLng) => void
   /** Панель поверх карты справа сверху. */
   overlay?: ReactNode
+  /** Видимая область после перетаскивания и зума — для догрузки точек. */
+  onViewportChange?: (bounds: MapBounds) => void
   className?: string
 }
 
@@ -59,7 +69,16 @@ interface TileMapProps {
  * Без сторонних SDK — проекция Web Mercator считается здесь же, поэтому нет ни
  * ключа API, ни внешнего JS; наружу тянутся только картинки тайлов.
  */
-export function TileMap({ center, zoom: initialZoom = 11, markers = [], pin, onPick, overlay, className }: TileMapProps) {
+export function TileMap({
+  center,
+  zoom: initialZoom = 11,
+  markers = [],
+  pin,
+  onPick,
+  overlay,
+  onViewportChange,
+  className,
+}: TileMapProps) {
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   /**
@@ -99,6 +118,20 @@ export function TileMap({ center, zoom: initialZoom = 11, markers = [], pin, onP
     observer.observe(node)
     return () => observer.disconnect()
   }, [])
+
+  // Границы вида пересчитываются на каждое движение и смену размера. Дебаунс
+  // и отмена запросов — на стороне потребителя, здесь только факт «вид сменился».
+  const notifyViewport = useRef(onViewportChange)
+  notifyViewport.current = onViewportChange
+  useEffect(() => {
+    if (size.width === 0 || size.height === 0) return
+    notifyViewport.current?.({
+      west: xToLng(view.x - size.width / 2, view.zoom),
+      east: xToLng(view.x + size.width / 2, view.zoom),
+      north: yToLat(view.y - size.height / 2, view.zoom),
+      south: yToLat(view.y + size.height / 2, view.zoom),
+    })
+  }, [view, size.width, size.height])
 
   // Карта открывается на переданном центре и следует за ним при смене режима.
   useEffect(() => {
@@ -380,7 +413,7 @@ export function TileMap({ center, zoom: initialZoom = 11, markers = [], pin, onP
         </div>
       </div>
 
-      <span className="pointer-events-none absolute right-2 bottom-2 rounded-control bg-surface/85 px-2 py-0.5 text-[11px] text-ink-muted">
+      <span className="pointer-events-none absolute right-2 bottom-2 rounded-control bg-surface/85 px-2 py-0.5 text-2xs text-ink-muted">
         {t('address.mapAttribution')}
       </span>
     </div>

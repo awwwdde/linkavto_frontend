@@ -2,13 +2,12 @@ import type { LatLng } from './TileMap'
 
 /**
  * Геокодер адресов: подсказки при вводе и обратное геокодирование клика по
- * карте. Данные — OpenStreetMap/Nominatim: работает без ключа, отдаёт реальные
- * адреса России с координатами и индексом.
+ * карте.
  *
- * TODO(api): при появлении ключа 2ГИС перевести на их геокодер — контракт тот
- * же (строка адреса, индекс, координаты), меняется только транспорт.
- * Если сеть недоступна, поиск падает на локальный справочник ниже — витрина на
- * моках остаётся рабочей.
+ * Источников три, по убыванию точности. Основной — 2ГИС, он включается, когда
+ * задан VITE_2GIS_KEY. Без ключа работает OpenStreetMap/Nominatim. Если сети
+ * нет вовсе — локальный справочник ниже, чтобы витрина на моках оставалась
+ * кликабельной. Наружу все три отдают один и тот же GeoPoint.
  */
 export interface GeoPoint extends LatLng {
   address: string
@@ -16,6 +15,10 @@ export interface GeoPoint extends LatLng {
 }
 
 export const MOSCOW_CENTER: LatLng = { lat: 55.751, lng: 37.6175 }
+
+const DGIS_KEY = import.meta.env['VITE_2GIS_KEY'] ?? ''
+const DGIS_ENDPOINT = 'https://catalog.api.2gis.com/3.0/items/geocode'
+const DGIS_FIELDS = 'items.point,items.address,items.full_address_name'
 
 const ENDPOINT = 'https://nominatim.openstreetmap.org'
 const COMMON = 'format=jsonv2&addressdetails=1&accept-language=ru'
@@ -75,6 +78,27 @@ const toGeoPoint = (place: NominatimPlace): GeoPoint => ({
   lng: Number(place.lon),
 })
 
+interface DgisItem {
+  type?: string
+  full_address_name?: string
+  full_name?: string
+  point?: { lat: number; lon: number }
+  address?: { postcode?: string }
+}
+
+const dgisPoint = (item: DgisItem): GeoPoint | null => {
+  const address = item.full_address_name ?? item.full_name ?? ''
+  if (!address || !item.point) return null
+  return { address, postal: item.address?.postcode ?? '', lat: item.point.lat, lng: item.point.lon }
+}
+
+async function dgisGeocode(params: string, signal?: AbortSignal): Promise<DgisItem[]> {
+  const response = await fetch(`${DGIS_ENDPOINT}?${params}&fields=${DGIS_FIELDS}&key=${DGIS_KEY}`, { signal })
+  if (!response.ok) throw new Error(String(response.status))
+  const body = (await response.json()) as { result?: { items?: DgisItem[] } }
+  return body.result?.items ?? []
+}
+
 const localMatches = (query: string): GeoPoint[] => {
   const value = query.trim().toLowerCase()
   return FALLBACK.filter((point) => point.address.toLowerCase().includes(value)).slice(0, 6)
@@ -84,6 +108,18 @@ const localMatches = (query: string): GeoPoint[] => {
 export async function searchAddress(query: string, signal?: AbortSignal): Promise<GeoPoint[]> {
   const value = query.trim()
   if (value.length < 3) return []
+
+  if (DGIS_KEY) {
+    try {
+      const items = await dgisGeocode(`q=${encodeURIComponent(value)}&page_size=6`, signal)
+      const points = items.map(dgisPoint).filter((point): point is GeoPoint => point !== null)
+      if (points.length > 0) return points
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error
+      // 2ГИС недоступен или ключ отозвали — молча уходим на Nominatim ниже.
+    }
+  }
+
   try {
     const response = await fetch(
       `${ENDPOINT}/search?${COMMON}&limit=6&countrycodes=ru&q=${encodeURIComponent(value)}`,
@@ -108,6 +144,19 @@ export async function searchAddress(query: string, signal?: AbortSignal): Promis
 
 /** Обратное геокодирование: что находится в точке клика по карте. */
 export async function reverseGeocode(position: LatLng, signal?: AbortSignal): Promise<GeoPoint | null> {
+  if (DGIS_KEY) {
+    try {
+      const items = await dgisGeocode(`lat=${position.lat}&lon=${position.lng}`, signal)
+      // Первым в ответе часто идёт улица без дома и индекса — дом полезнее.
+      const item = items.find((candidate) => candidate.type === 'building') ?? items[0]
+      const point = item ? dgisPoint(item) : null
+      // Координаты берём из клика: иначе метка прыгает в центр найденного дома.
+      if (point) return { ...point, lat: position.lat, lng: position.lng }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error
+    }
+  }
+
   try {
     const response = await fetch(
       `${ENDPOINT}/reverse?${COMMON}&zoom=18&lat=${position.lat}&lon=${position.lng}`,
