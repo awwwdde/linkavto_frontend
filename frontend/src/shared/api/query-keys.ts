@@ -10,6 +10,7 @@ export const queryKeys = {
     offers: (slug: string) => ['products', 'offers', slug] as const,
     similar: (slug: string) => ['products', 'similar', slug] as const,
     reviews: (slug: string) => ['products', 'reviews', slug] as const,
+    questions: (slug: string) => ['products', 'questions', slug] as const,
   },
   search: {
     suggest: (q: string) => ['search', 'suggest', q] as const,

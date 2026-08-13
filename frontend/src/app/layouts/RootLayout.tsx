@@ -22,7 +22,7 @@ export function RootLayout() {
       <Header />
 
       {/* Отступ под fixed-шапку (§4а). Главная переопределяет его, уводя баннер под шапку. */}
-      <main className="flex-1 pt-14 pb-24 lg:pt-20 lg:pb-0">
+      <main className="flex-1 pt-14 pb-24 lg:pt-18 lg:pb-0">
         <Outlet />
       </main>
 

@@ -13,10 +13,24 @@ export function ProductGallery({ images, name }: { images: ImageSet[]; name: str
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto rounded-card bg-surface lg:block">
+    /*
+     * На десктопе миниатюры вынесены из потока (absolute под карточкой). Иначе
+     * они забирали часть высоты колонки, и белая карточка с фото не доходила до
+     * низа блока с информацией. Теперь высоту ряда задаёт правая колонка, а
+     * карточка тянется ровно под неё; место под миниатюры резервирует отступ
+     * грида на странице товара.
+     */
+    <div className="flex flex-col gap-3 lg:relative lg:h-full lg:gap-0">
+      <div className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto rounded-card bg-surface lg:h-full">
         {images.map((image, index) => (
-          <div key={image.card} className={cn('w-full shrink-0 snap-center p-4', index !== active && 'lg:hidden')}>
+          <div
+            key={image.card}
+            className={cn(
+              'w-full shrink-0 snap-center p-4',
+              'lg:flex lg:h-full lg:items-center lg:justify-center',
+              index !== active && 'lg:hidden',
+            )}
+          >
             <Img
               src={image.full}
               alt={image.alt || name}
@@ -24,14 +38,14 @@ export function ProductGallery({ images, name }: { images: ImageSet[]; name: str
               height={800}
               priority={index === 0}
               sizes="(min-width: 1024px) 520px, 100vw"
-              className="mx-auto w-full max-w-[520px] rounded-control"
+              className="mx-auto w-full max-w-[520px] rounded-control lg:h-full lg:object-contain"
             />
           </div>
         ))}
       </div>
 
       {images.length > 1 ? (
-        <div className="hidden gap-2 lg:flex">
+        <div className="hidden gap-2 lg:absolute lg:inset-x-0 lg:top-full lg:mt-3 lg:flex">
           {images.map((image, index) => (
             <button
               key={image.thumb}
@@ -40,7 +54,7 @@ export function ProductGallery({ images, name }: { images: ImageSet[]; name: str
               aria-label={`${name}, фото ${index + 1}`}
               aria-current={index === active}
               className={cn(
-                'rounded-control border p-1 transition-colors duration-[--duration-fast]',
+                'rounded-control border bg-surface p-1 transition-colors duration-[--duration-fast]',
                 index === active ? 'border-ink' : 'border-line hover:border-ink-muted',
               )}
             >

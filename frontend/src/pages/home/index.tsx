@@ -198,7 +198,8 @@ export function Component() {
       />
 
       {/* Отменяем отступ RootLayout под fixed-шапку — баннер уходит под шапку (§4б зона 1). */}
-      <div className="-mt-14 lg:-mt-20">
+      {/* Отрицательный отступ равен высоте шапки: 56 на mobile, 72 на desktop. */}
+      <div className="-mt-14 lg:-mt-18">
         <PromoCarousel />
 
         {/* Блок после рекламы: при скролле его верхние углы схлопываются, и он

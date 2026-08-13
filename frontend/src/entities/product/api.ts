@@ -1,5 +1,5 @@
 import { get } from '@/shared/api/client'
-import type { Offer, ProductDetail, ProductListItem, ProductListResponse, Review } from '@/shared/api/types'
+import type { Offer, ProductDetail, ProductListItem, ProductListResponse, Question, Review } from '@/shared/api/types'
 
 export interface ProductListParams {
   category?: string
@@ -29,3 +29,5 @@ export const fetchProductOffers = (slug: string) => get<Offer[]>(`products/${slu
 export const fetchSimilarProducts = (slug: string) => get<ProductListItem[]>(`products/${slug}/similar/`)
 
 export const fetchProductReviews = (slug: string) => get<Review[]>(`products/${slug}/reviews/`)
+
+export const fetchProductQuestions = (slug: string) => get<Question[]>(`products/${slug}/questions/`)

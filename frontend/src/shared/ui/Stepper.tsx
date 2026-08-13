@@ -9,16 +9,24 @@ export interface StepperProps {
   min?: number
   max?: number
   onRemove?: () => void
+  /** `accent` — товар уже в корзине: степпер держит цвет кнопки, которую заменил. */
+  tone?: 'default' | 'accent'
   className?: string
 }
 
-export function Stepper({ value, onChange, min = 1, max = 99, onRemove, className }: StepperProps) {
+export function Stepper({ value, onChange, min = 1, max = 99, onRemove, tone = 'default', className }: StepperProps) {
   const canDecrease = value > min
   const showRemove = !canDecrease && Boolean(onRemove)
 
   return (
     <div
-      className={cn('inline-flex h-10 items-center rounded-control border border-line bg-surface', className)}
+      // Цвета выбираются здесь, а не приходят классами снаружи: cn склеивает
+      // строки без tailwind-merge, и внешний border-accent проиграл бы border-line.
+      className={cn(
+        'inline-flex h-10 items-center rounded-control border',
+        tone === 'accent' ? 'border-accent bg-accent/5 text-accent' : 'border-line bg-surface',
+        className,
+      )}
       role="group"
       aria-label={t('cart.quantity')}
     >

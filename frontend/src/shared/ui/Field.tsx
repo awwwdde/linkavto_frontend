@@ -85,18 +85,20 @@ export function Select({ label, hint, error, className, wrapperClassName, childr
   )
 }
 
-export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'id'> & { label: ReactNode }
+/** Без `label` галочка идёт голой — тогда имя ей задаёт `aria-label`. */
+export type CheckboxProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'id'> & { label?: ReactNode }
 
 export function Checkbox({ label, className, ...rest }: CheckboxProps) {
   const id = useId()
+  const input = (
+    <input id={id} type="checkbox" className={cn('h-5 w-5 shrink-0 accent-[--color-accent]', className)} {...rest} />
+  )
+
+  if (label === undefined) return input
+
   return (
     <div className="flex min-h-10 items-center gap-3">
-      <input
-        id={id}
-        type="checkbox"
-        className={cn('h-5 w-5 shrink-0 accent-[--color-accent]', className)}
-        {...rest}
-      />
+      {input}
       <label htmlFor={id} className="cursor-pointer text-base text-ink">
         {label}
       </label>

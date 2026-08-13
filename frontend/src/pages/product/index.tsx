@@ -3,16 +3,16 @@ import { useQuery } from '@tanstack/react-query'
 import {
   fetchProduct,
   fetchProductOffers,
-  fetchProductReviews,
   fetchSimilarProducts,
 } from '@/entities/product/api'
 import { AttributesTable } from '@/entities/product/AttributesTable'
+import { CrossReferences } from '@/entities/product/CrossReferences'
 import { OffersTable, OffersTableSkeleton } from '@/entities/product/OffersTable'
-import { PartPassport } from '@/entities/product/PartPassport'
+import { ProductCodes } from '@/entities/product/ProductCodes'
 import { ProductCard, ProductGrid } from '@/entities/product/ProductCard'
+import { SellerCard } from '@/entities/seller/SellerCard'
 import { ProductGallery } from '@/entities/product/ProductGallery'
-import { ReviewList } from '@/entities/review/ReviewList'
-import { ReviewForm } from '@/entities/review/ReviewForm'
+import { ProductFeedback } from '@/entities/review/ProductFeedback'
 import { queryKeys } from '@/shared/api/query-keys'
 import { t } from '@/shared/i18n'
 import {
@@ -62,12 +62,6 @@ export function Component() {
     enabled: product.isSuccess,
   })
 
-  const reviews = useQuery({
-    queryKey: queryKeys.products.reviews(slug),
-    queryFn: () => fetchProductReviews(slug),
-    enabled: product.isSuccess && (product.data?.reviews_count ?? 0) > 0,
-  })
-
   const similar = useQuery({
     queryKey: queryKeys.products.similar(slug),
     queryFn: () => fetchSimilarProducts(slug),
@@ -84,6 +78,8 @@ export function Component() {
   }
 
   const item = product.data
+  // Продавец под ценой — тот, чьё предложение показано первым в таблице.
+  const topSeller = offers.data?.[0]?.seller ?? null
 
   return (
     <>
@@ -104,13 +100,20 @@ export function Component() {
           ]}
         />
 
-        <div className="grid gap-8 lg:grid-cols-2">
+        {/* lg:mb-20 — место под миниатюры галереи: они вынесены из потока,
+            иначе укорачивали карточку с фото. */}
+        <div className="grid gap-8 lg:mb-20 lg:grid-cols-2">
           {/* §3.4, правило одной оси: доминанта карточки — галерея. */}
           <ProductGallery images={item.images} name={item.name} />
 
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-sm text-ink-muted">{item.sku}</span>
+              {/* items-center, иначе артикул липнет к верху 40-пиксельной
+                  кнопки и до заголовка остаётся пустая полоса. */}
+              <div className="-mr-2 flex items-center justify-between gap-3">
+                <span className="font-mono text-sm text-ink-muted">{item.sku}</span>
+                <ShareButtons title={item.name} />
+              </div>
               <h1 className="text-xl font-semibold lg:text-2xl">{item.name}</h1>
               <div className="flex flex-wrap items-center gap-3">
                 {item.reviews_count > 0 && item.rating !== null ? (
@@ -133,24 +136,21 @@ export function Component() {
               </div>
             </div>
 
-            <PartPassport
-              sku={item.sku}
-              oemNumber={item.oem_number}
-              crosses={item.crosses}
-              compatibility={item.compatibility}
-            />
+            {topSeller ? <SellerCard seller={topSeller} /> : null}
 
-            <ShareButtons title={item.name} />
+            <ProductCodes sku={item.sku} productId={item.id} />
           </div>
         </div>
 
         {offers.isPending ? <OffersTableSkeleton /> : offers.data ? <OffersTable offers={offers.data} product={item} /> : null}
 
-        <AttributesTable attributes={item.attributes} />
+        <CrossReferences crosses={item.crosses} />
+
+        <AttributesTable attributes={item.attributes} compatibility={item.compatibility} />
 
         {item.description_html ? (
           <section className="flex flex-col gap-4">
-            <SectionHeading lead={t('product.description')} ghost={t('product.descriptionGhost')} />
+            <SectionHeading lead={t('product.description')} />
             <div
               className="flex flex-col gap-3 rounded-card bg-surface p-4 text-base leading-relaxed text-ink-muted shadow-float lg:p-6 [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-2"
               // §10.5: единственное разрешённое место — описание, санитизировано бэком.
@@ -159,15 +159,13 @@ export function Component() {
           </section>
         ) : null}
 
-        {reviews.data ? <ReviewList reviews={reviews.data} /> : null}
-
-        <ReviewForm productSlug={item.slug} />
+        <ProductFeedback productSlug={item.slug} />
 
         {similar.data && similar.data.length > 0 ? (
           <section className="flex flex-col gap-4">
-            <SectionHeading lead={t('product.similar')} ghost={t('product.similarGhost')} />
-            <ProductGrid>
-              {similar.data.slice(0, 8).map((similarItem) => (
+            <SectionHeading lead={t('product.similar')} />
+            <ProductGrid dense>
+              {similar.data.slice(0, 12).map((similarItem) => (
                 <ProductCard key={similarItem.id} product={similarItem} />
               ))}
             </ProductGrid>

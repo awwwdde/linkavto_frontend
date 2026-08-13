@@ -28,6 +28,8 @@ import {
   SlidersHorizontal,
   Star,
   Store,
+  ThumbsDown,
+  ThumbsUp,
   Tractor,
   Trash2,
   Truck,
@@ -87,6 +89,8 @@ export const IconPhoto = make(ImageIcon) // плейсхолдер «нет фо
 export const IconShare = make(Share2)
 export const IconArrowRight = make(ArrowRight) // «весь раздел» → ArrowRight (§4а)
 export const IconStore = make(Store) // «стать продавцом» в шапке
+export const IconThumbsUp = make(ThumbsUp) // полезность отзыва
+export const IconThumbsDown = make(ThumbsDown)
 
 /* --- Типы техники (§4а) --- */
 export const IconTypeCar = make(Car)

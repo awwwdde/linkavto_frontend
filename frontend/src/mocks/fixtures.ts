@@ -8,6 +8,7 @@ import type {
   Offer,
   ProductDetail,
   ProductListItem,
+  Question,
   Review,
   SellerBrief,
   ShowIn,
@@ -518,12 +519,60 @@ export function reviewsFor(product: ProductDetail): Review[] {
     'Качество среднее, но за эти деньги претензий нет.',
     'Продавец подсказал по совместимости, деталь подошла с первого раза.',
   ]
+  // Ответ продавца висит не на каждом отзыве — так список выглядит живее.
+  const sellerReplies = [
+    'Спасибо за отзыв! Рады, что деталь подошла.',
+    'Благодарим за обратную связь — передали замечание поставщику.',
+  ]
   return Array.from({ length: Math.min(4, product.reviews_count) }, (_, index) => ({
     id: product.id * 100 + index,
     author: ['Игорь', 'Марина', 'Сергей', 'Алексей'][index] ?? 'Покупатель',
     rating: 3 + Math.floor(random() * 3),
     text: texts[index] ?? texts[0]!,
     created_at: new Date(2026, 2 + index, 5 + index).toISOString(),
+    likes: Math.floor(random() * 12),
+    dislikes: Math.floor(random() * 3),
+    replies:
+      index % 2 === 0
+        ? [
+            {
+              id: product.id * 1000 + index,
+              author: 'ДеталиПро',
+              text: sellerReplies[index % sellerReplies.length]!,
+              created_at: new Date(2026, 2 + index, 7 + index).toISOString(),
+              is_seller: true,
+            },
+          ]
+        : [],
+  }))
+}
+
+/**
+ * Вопросы о товаре. TODO(api): отдельная ручка `products/:slug/questions/`;
+ * в CRM система вопросов и ответов уже есть, здесь — её витринная часть.
+ */
+export function questionsFor(product: ProductDetail): Question[] {
+  const asked = [
+    { q: 'Подойдёт ли на дорестайлинг?', a: 'Да, посадочные размеры совпадают — ставится без доработок.' },
+    { q: 'Какая гарантия и что нужно для возврата?', a: 'Гарантия 12 месяцев, для возврата достаточно чека из заказа.' },
+    { q: 'Оригинал или аналог?', a: null },
+  ]
+  return asked.map((item, index) => ({
+    id: product.id * 10 + index,
+    author: ['Дмитрий', 'Ольга', 'Павел'][index] ?? 'Покупатель',
+    text: item.q,
+    created_at: new Date(2026, 3 + index, 12 + index).toISOString(),
+    answers: item.a
+      ? [
+          {
+            id: product.id * 10000 + index,
+            author: 'ДеталиПро',
+            text: item.a,
+            created_at: new Date(2026, 3 + index, 13 + index).toISOString(),
+            is_seller: true,
+          },
+        ]
+      : [],
   }))
 }
 

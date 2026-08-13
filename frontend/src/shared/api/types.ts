@@ -305,12 +305,33 @@ export interface Order {
   payment_method: 'card' | 'sbp' | 'cash'
 }
 
+/** Ответ под отзывом или вопросом. Ответ продавца выделяется в списке. */
+export interface FeedbackReply {
+  id: number
+  author: string
+  text: string
+  created_at: string
+  is_seller: boolean
+}
+
 export interface Review {
   id: number
   author: string
   rating: number
   text: string
   created_at: string
+  likes: number
+  dislikes: number
+  replies: FeedbackReply[]
+}
+
+/** Вопрос о товаре — вторая вкладка блока обратной связи. */
+export interface Question {
+  id: number
+  author: string
+  text: string
+  created_at: string
+  answers: FeedbackReply[]
 }
 
 export interface Banner {

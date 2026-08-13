@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/cn'
 import { t } from '@/shared/i18n'
 import { Badge, Img, Price, Rating, Skeleton } from '@/shared/ui'
 import { AddToCart } from '@/features/cart/AddToCart'
+import { FavoriteButton } from '@/features/favorites/FavoriteButton'
 
 /**
  * §3.4: минималистичная карточка — вертикальный прямоугольник (высота > ширины).
@@ -19,13 +20,16 @@ export function ProductCard({ product, className }: { product: ProductListItem; 
   return (
     <article
       className={cn(
-        'group flex flex-col overflow-hidden rounded-card border bg-surface',
+        'group relative flex flex-col overflow-hidden rounded-card border bg-surface',
         // Подходит выбранному авто → спокойная ok-обводка (§ гараж-контекст).
         fits ? 'border-ok/30' : 'border-line',
         'transition-shadow duration-[--duration-base] hover:shadow-float',
         className,
       )}
     >
+      {/* Избранное поверх фото — вне ссылки, иначе клик уводил бы на товар. */}
+      <FavoriteButton product={product} className="absolute top-2 right-2 z-10" />
+
       <Link to={`/product/${product.slug}`} className="flex flex-col">
         {/* Фото во всю ширину, доходит до верха и краёв карточки. */}
         <div className="relative overflow-hidden bg-paper">
@@ -76,8 +80,30 @@ export function ProductCardSkeleton() {
   )
 }
 
-export function ProductGrid({ children, className }: { children: React.ReactNode; className?: string }) {
+/**
+ * Сетка карточек. `dense` — шесть в ряд на широком экране: в лентах «похожие»
+ * и «избранное» важнее охват, а не размер карточки.
+ */
+export function ProductGrid({
+  children,
+  dense,
+  className,
+}: {
+  children: React.ReactNode
+  dense?: boolean
+  className?: string
+}) {
   return (
-    <div className={cn('grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4', className)}>{children}</div>
+    <div
+      className={cn(
+        'grid gap-4',
+        dense
+          ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
+          : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
+        className,
+      )}
+    >
+      {children}
+    </div>
   )
 }

@@ -32,6 +32,7 @@ import {
   productBrandOf,
   products,
   productVehicle,
+  questionsFor,
   reviewsFor,
   sellers,
   staticPages,
@@ -508,9 +509,44 @@ export const handlers = [
     return HttpResponse.json(reviewsFor(product))
   }),
 
-  http.post(`${BASE}/products/:slug/reviews/`, async () => {
+  http.post(`${BASE}/products/:slug/reviews/`, async ({ request }) => {
     await delay(400)
-    return HttpResponse.json({ id: 9999, author: 'Вы', rating: 5, text: '', created_at: new Date().toISOString() }, { status: 201 })
+    const body = (await request.json()) as { rating?: number; text?: string }
+    return HttpResponse.json(
+      {
+        id: Date.now(),
+        author: 'Вы',
+        rating: body.rating ?? 5,
+        text: body.text ?? '',
+        created_at: new Date().toISOString(),
+        likes: 0,
+        dislikes: 0,
+        replies: [],
+      },
+      { status: 201 },
+    )
+  }),
+
+  http.get(`${BASE}/products/:slug/questions/`, async ({ params }) => {
+    await delay(200)
+    const product = products.find((item) => item.slug === params['slug'])
+    if (!product) return new HttpResponse(null, { status: 404 })
+    return HttpResponse.json(questionsFor(product))
+  }),
+
+  http.post(`${BASE}/products/:slug/questions/`, async ({ request }) => {
+    await delay(400)
+    const body = (await request.json()) as { text?: string }
+    return HttpResponse.json(
+      {
+        id: Date.now(),
+        author: 'Вы',
+        text: body.text ?? '',
+        created_at: new Date().toISOString(),
+        answers: [],
+      },
+      { status: 201 },
+    )
   }),
 
   http.get(`${BASE}/products/:slug/`, async ({ params }) => {

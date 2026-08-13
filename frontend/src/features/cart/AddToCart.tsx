@@ -27,8 +27,11 @@ export function AddToCart({ product, offer = null, size = 'md', block = true }: 
 
   if (item) {
     const key = cartKey(product.id, offer?.id ?? null)
+    // Акцентный тон: на месте синей кнопки оставался нейтральный степпер, и было
+    // не видно, что товар уже в корзине.
     return (
       <Stepper
+        tone="accent"
         value={item.quantity}
         onChange={(next) => setQuantity(key, next)}
         onRemove={() => remove(key)}

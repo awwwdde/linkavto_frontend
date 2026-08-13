@@ -36,7 +36,7 @@ export function AddressPill({ className, compact }: { className?: string; compac
                 className,
               )
             : cn(
-                'glass-chrome flex h-14 shrink-0 items-center gap-2 rounded-pill border border-line px-4',
+                'glass-chrome flex h-12 shrink-0 items-center gap-2 rounded-pill border border-line px-4',
                 'text-base text-ink shadow-float transition-colors duration-[--duration-fast] hover:border-ink-muted',
                 className,
               )

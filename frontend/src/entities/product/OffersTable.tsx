@@ -12,7 +12,7 @@ export function OffersTable({ offers, product }: { offers: Offer[]; product: Pro
 
   return (
     <section className="flex flex-col gap-4">
-      <SectionHeading lead={t('product.offers')} ghost={t('product.offersGhost')} />
+      <SectionHeading lead={t('product.offers')} />
 
       {/* Mobile */}
       <ul className="flex flex-col gap-3 lg:hidden">

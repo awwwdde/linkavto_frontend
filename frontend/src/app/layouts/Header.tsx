@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { t } from '@/shared/i18n'
+import { cn } from '@/shared/lib/cn'
 import { usePrefersReducedMotion } from '@/shared/lib/media'
 import { userInitials } from '@/shared/lib/initials'
 import { Container } from '@/shared/ui/Layout'
@@ -79,7 +80,7 @@ function SellerPill() {
   return (
     <Link
       to="/become-seller"
-      className="glass-chrome hidden h-14 shrink-0 items-center gap-2 rounded-pill border border-line px-4 text-base text-ink shadow-float transition-colors duration-[--duration-fast] hover:border-ink-muted lg:flex"
+      className="glass-chrome hidden h-12 shrink-0 items-center gap-2 rounded-pill border border-line px-4 text-base text-ink shadow-float transition-colors duration-[--duration-fast] hover:border-ink-muted lg:flex"
     >
       <IconStore width={18} height={18} className="text-icon" />
       <span className="font-medium">{t('nav.becomeSeller')}</span>
@@ -102,7 +103,7 @@ function LoginPill() {
         to="/profile"
         title={fullName}
         aria-label={`${t('nav.profile')}: ${fullName}`}
-        className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink text-base font-medium text-white shadow-float transition-colors duration-[--duration-fast] hover:bg-ink/90"
+        className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-ink text-base font-medium text-white shadow-float transition-colors duration-[--duration-fast] hover:bg-ink/90"
       >
         {user.avatar ? (
           <img src={user.avatar} alt="" className="h-full w-full object-cover" />
@@ -119,7 +120,7 @@ function LoginPill() {
     <button
       type="button"
       onClick={() => openAuth()}
-      className="flex h-14 shrink-0 items-center gap-2 rounded-pill bg-ink px-5 text-base font-medium text-white shadow-float transition-colors duration-[--duration-fast] hover:bg-ink/90"
+      className="flex h-12 shrink-0 items-center gap-2 rounded-pill bg-ink px-5 text-base font-medium text-white shadow-float transition-colors duration-[--duration-fast] hover:bg-ink/90"
     >
       <IconUser width={18} height={18} />
       {t('nav.login')}
@@ -175,14 +176,17 @@ function DesktopHeader() {
       </AnimatePresence>
 
       <Container>
-        <div className="flex items-center gap-3 py-4">
-          {/* 1. Пилюля адреса — отдельно слева (§4а), рядом вход для продавцов. */}
-          <AddressPill />
-          <SellerPill />
+        <div className="flex items-center gap-3 py-3">
+          {/* 1. Слева — вход для продавцов. flex-1 здесь и справа: боковые
+              группы делят свободное место поровну, поэтому центральная пилюля
+              стоит по центру страницы, а не по центру остатка. */}
+          <div className={cn('flex items-center gap-3', searchOpen ? 'shrink-0' : 'flex-1')}>
+            <SellerPill />
+          </div>
 
           {/* 2. Основная пилюля — компактная, по центру; при поиске превращается
               в отдельное поле + панель подсказок (§4а, два прямоугольника). */}
-          <div className="flex flex-1 justify-center">
+          <div className={searchOpen ? 'flex flex-1 justify-center' : 'flex shrink-0 justify-center'}>
             {searchOpen ? (
               <motion.div
                 key="search"
@@ -199,7 +203,7 @@ function DesktopHeader() {
                 />
               </motion.div>
             ) : (
-              <div className="glass-chrome relative z-40 flex h-14 w-auto items-center gap-4 rounded-pill border border-line px-5 shadow-float">
+              <div className="glass-chrome relative z-40 flex h-12 w-auto items-center gap-4 rounded-pill border border-line px-5 shadow-float">
                 <Logo />
                 <button
                   type="button"
@@ -215,20 +219,23 @@ function DesktopHeader() {
             )}
           </div>
 
-          {/* 3. Пилюля избранное + корзина — отдельно (§4а). */}
-          <div className="glass-chrome flex h-14 items-center gap-1 rounded-pill border border-line px-3 shadow-float">
-            <Link
-              to="/favorites"
-              aria-label={t('nav.favorites')}
-              className="flex h-10 w-10 items-center justify-center rounded-control text-ink transition-colors duration-[--duration-fast] hover:bg-ink/5"
-            >
-              <IconHeart />
-            </Link>
-            <CartLink />
-          </div>
+          {/* 3. Справа — адрес иконкой вместе с избранным и корзиной, за ними вход. */}
+          <div className={cn('flex items-center justify-end gap-3', searchOpen ? 'shrink-0' : 'flex-1')}>
+            <div className="glass-chrome flex h-12 items-center gap-1 rounded-pill border border-line px-3 shadow-float">
+              <AddressPill compact />
+              <Link
+                to="/favorites"
+                aria-label={t('nav.favorites')}
+                className="flex h-10 w-10 items-center justify-center rounded-control text-ink transition-colors duration-[--duration-fast] hover:bg-ink/5"
+              >
+                <IconHeart />
+              </Link>
+              <CartLink />
+            </div>
 
-          {/* 4. Тёмная пилюля «Войти» (§4а). */}
-          <LoginPill />
+            {/* 4. Тёмная пилюля «Войти» (§4а). */}
+            <LoginPill />
+          </div>
         </div>
       </Container>
     </div>
