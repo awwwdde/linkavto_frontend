@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -31,6 +32,7 @@ import { AddToCart } from '@/features/cart/AddToCart'
 import { FavoriteButton } from '@/features/favorites/FavoriteButton'
 import { ShareButtons } from '@/features/share/ShareButtons'
 import { useActiveVehicle } from '@/features/garage/store'
+import { useViewedStore } from '@/features/history/viewed-store'
 
 function ProductSkeleton() {
   return (
@@ -67,6 +69,13 @@ export function Component() {
     queryFn: () => fetchSimilarProducts(slug),
     enabled: product.isSuccess,
   })
+
+  // История просмотров для блока «Вы смотрели» в профиле.
+  const pushViewed = useViewedStore((state) => state.push)
+  const viewed = product.data
+  useEffect(() => {
+    if (viewed) pushViewed(viewed)
+  }, [viewed, pushViewed])
 
   if (product.isPending) return <ProductSkeleton />
   if (product.isError) {

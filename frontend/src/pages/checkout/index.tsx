@@ -1,27 +1,41 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { post } from '@/shared/api/client'
-import { ApiError } from '@/shared/api/client'
+import { ApiError, post } from '@/shared/api/client'
 import { t } from '@/shared/i18n'
-import { Button, ButtonLink, Container, EmptyState, Input, PageMeta, Price, Radio, Tabs, toast } from '@/shared/ui'
+import { formatPlural } from '@/shared/lib/format'
+import {
+  Button,
+  ButtonLink,
+  Container,
+  EmptyState,
+  Input,
+  Modal,
+  PageMeta,
+  Price,
+  Radio,
+  toast,
+} from '@/shared/ui'
+import { useAuthStore } from '@/features/auth/store'
+import { useUiStore } from '@/app/ui-store'
 import { useCartStore } from '@/features/cart/store'
+import { useAddressStore } from '@/features/address/store'
+import { AddressModal, addressLabel } from '@/features/address/AddressModal'
+import { AddressPicker } from '@/features/address/AddressPicker'
 import { PaymentModal } from '@/features/checkout/PaymentModal'
 
 const DELIVERY_PER_SELLER = 39000
 
 const schema = z.object({
-  name: z.string().min(2, 'Укажите имя и фамилию — так продавец найдёт заказ.'),
+  last_name: z.string().min(2, 'Укажите фамилию.'),
+  first_name: z.string().min(2, 'Укажите имя.'),
   phone: z.string().min(10, 'Телефон нужен для связи по доставке.'),
-  city: z.string().min(2, 'Укажите город доставки.'),
-  address: z.string().min(4, 'Укажите улицу, дом и квартиру.'),
   comment: z.string().optional(),
 })
 type CheckoutForm = z.infer<typeof schema>
 
-type Step = 'address' | 'payment' | 'confirm'
 type Delivery = 'cdek' | 'post' | 'pickup'
 type Payment = 'card' | 'sbp' | 'cash'
 
@@ -29,24 +43,39 @@ export function Component() {
   const navigate = useNavigate()
   const items = useCartStore((state) => state.items)
   const clear = useCartStore((state) => state.clear)
+  const user = useAuthStore((state) => state.user)
+  const openAuth = useUiStore((state) => state.openAuth)
+  const addresses = useAddressStore((state) => state.addresses)
 
-  const [step, setStep] = useState<Step>('address')
   const [delivery, setDelivery] = useState<Delivery>('cdek')
   const [payment, setPayment] = useState<Payment>('card')
   const [pending, setPending] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
-  const [placedOrder, setPlacedOrder] = useState<{ id: number } | null>(null)
+  const [listOpen, setListOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [placedOrder, setPlacedOrder] = useState<{ id: number; number: string } | null>(null)
+  const [doneOpen, setDoneOpen] = useState(false)
 
   const form = useForm<CheckoutForm>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', phone: '', city: '', address: '', comment: '' },
+    defaultValues: {
+      last_name: user?.last_name ?? '',
+      first_name: user?.first_name ?? '',
+      phone: user?.phone ?? '',
+      comment: '',
+    },
   })
 
+  // Адрес берём основной из списка профиля — его же меняют кнопки ниже.
+  const address = addresses.find((item) => item.is_default) ?? addresses[0] ?? null
+
   const subtotal = items.reduce((sum, item) => sum + (item.offer?.price ?? item.product.price) * item.quantity, 0)
+  const count = items.reduce((sum, item) => sum + item.quantity, 0)
   const sellersCount = new Set(items.map((item) => item.offer?.seller.id ?? 0)).size
   const deliveryCost = delivery === 'pickup' ? 0 : sellersCount * DELIVERY_PER_SELLER
+  const total = subtotal + deliveryCost
 
-  if (items.length === 0) {
+  if (items.length === 0 && !doneOpen) {
     return (
       <Container className="py-12">
         <PageMeta title="Оформление заказа — LINKAVTO" canonicalPath="/checkout" noIndex />
@@ -66,6 +95,8 @@ export function Component() {
       const order = await post<{ id: number; number: string }>('orders/', {
         delivery_method: delivery,
         payment_method: payment,
+        address: address ? addressLabel(address) : '',
+        email: user?.email ?? '',
         items: items.map((item) => ({
           product_id: item.product.id,
           offer_id: item.offer?.id ?? null,
@@ -73,12 +104,12 @@ export function Component() {
         })),
         ...values,
       })
+      setPlacedOrder(order)
       // Онлайн-оплата — через мок-эквайер; наличными — сразу успех.
       if (payment === 'cash') {
         clear()
-        navigate(`/checkout/success/${order.id}`)
+        setDoneOpen(true)
       } else {
-        setPlacedOrder(order)
         setPayOpen(true)
       }
     } catch (error) {
@@ -88,6 +119,20 @@ export function Component() {
     }
   }
 
+  /** Порядок проверок: сначала вход, потом адрес, потом валидация полей. */
+  const place = () => {
+    if (!user) {
+      openAuth('/checkout')
+      return
+    }
+    if (!address) {
+      toast.error(t('checkout.addressRequired'))
+      setListOpen(true)
+      return
+    }
+    void form.handleSubmit(() => void submit())()
+  }
+
   return (
     <>
       <PageMeta title="Оформление заказа — LINKAVTO" canonicalPath="/checkout" noIndex />
@@ -95,138 +140,117 @@ export function Component() {
       <Container className="flex flex-col gap-6 py-4 lg:py-8">
         <h1 className="text-xl font-semibold lg:text-2xl">{t('checkout.title')}</h1>
 
-        <Tabs
-          aria-label={t('checkout.title')}
-          value={step}
-          onChange={setStep}
-          items={[
-            { value: 'address', label: t('checkout.stepAddress') },
-            { value: 'payment', label: t('checkout.stepPayment') },
-            { value: 'confirm', label: t('checkout.stepConfirm') },
-          ]}
-        />
-
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-          <div className="flex min-w-0 flex-1 flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
-            {step === 'address' ? (
-              <form
-                className="flex flex-col gap-4"
-                onSubmit={form.handleSubmit(() => setStep('payment'))}
-              >
-                <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-2 text-base font-semibold">{t('checkout.stepAddress')}</legend>
-                  <Radio
-                    name="delivery"
-                    checked={delivery === 'cdek'}
-                    onChange={() => setDelivery('cdek')}
-                    label={t('checkout.deliveryCdek')}
-                    description="Пункт выдачи или курьер, 2–5 дней"
-                  />
-                  <Radio
-                    name="delivery"
-                    checked={delivery === 'post'}
-                    onChange={() => setDelivery('post')}
-                    label={t('checkout.deliveryPost')}
-                    description="Доставка в отделение, 5–12 дней"
-                  />
-                  <Radio
-                    name="delivery"
-                    checked={delivery === 'pickup'}
-                    onChange={() => setDelivery('pickup')}
-                    label={t('checkout.deliveryPickup')}
-                    description="Со склада продавца, бесплатно"
-                  />
-                </fieldset>
-
-                <Input label={t('checkout.name')} autoComplete="name" error={form.formState.errors.name?.message} {...form.register('name')} />
-                <Input
-                  label={t('checkout.phone')}
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="+7 900 000-00-00"
-                  error={form.formState.errors.phone?.message}
-                  {...form.register('phone')}
+          <div className="flex min-w-0 flex-1 flex-col gap-6">
+            <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-2 text-base font-semibold">{t('checkout.stepAddress')}</legend>
+                <Radio
+                  name="delivery"
+                  checked={delivery === 'cdek'}
+                  onChange={() => setDelivery('cdek')}
+                  label={t('checkout.deliveryCdek')}
+                  description="Пункт выдачи или курьер, 2–5 дней"
                 />
-                <Input label={t('checkout.city')} autoComplete="address-level2" error={form.formState.errors.city?.message} {...form.register('city')} />
-                <Input label={t('checkout.address')} autoComplete="street-address" error={form.formState.errors.address?.message} {...form.register('address')} />
-                <Input label={t('checkout.comment')} {...form.register('comment')} />
+                <Radio
+                  name="delivery"
+                  checked={delivery === 'post'}
+                  onChange={() => setDelivery('post')}
+                  label={t('checkout.deliveryPost')}
+                  description="Доставка в отделение, 5–12 дней"
+                />
+                <Radio
+                  name="delivery"
+                  checked={delivery === 'pickup'}
+                  onChange={() => setDelivery('pickup')}
+                  label={t('checkout.deliveryPickup')}
+                  description="Со склада продавца, бесплатно"
+                />
+              </fieldset>
 
-                <Button type="submit" variant="primary" size="lg" block>
-                  {t('checkout.next')}
-                </Button>
-              </form>
-            ) : step === 'payment' ? (
-              <div className="flex flex-col gap-4">
-                <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-2 text-base font-semibold">{t('checkout.stepPayment')}</legend>
-                  <Radio
-                    name="payment"
-                    checked={payment === 'card'}
-                    onChange={() => setPayment('card')}
-                    label={t('checkout.payCard')}
-                    description="Оплата на защищённой странице банка"
-                  />
-                  <Radio
-                    name="payment"
-                    checked={payment === 'sbp'}
-                    onChange={() => setPayment('sbp')}
-                    label={t('checkout.paySbp')}
-                    description="По QR-коду через приложение банка"
-                  />
-                  <Radio
-                    name="payment"
-                    checked={payment === 'cash'}
-                    onChange={() => setPayment('cash')}
-                    label={t('checkout.payCash')}
-                    description="Наличными или картой курьеру"
-                  />
-                </fieldset>
-                <Button variant="primary" size="lg" block onClick={() => setStep('confirm')}>
-                  {t('checkout.next')}
-                </Button>
+              <div className="flex flex-col gap-2 border-t border-line pt-4">
+                <span className="text-base font-semibold">
+                  {t('checkout.address')} <span className="text-danger">*</span>
+                </span>
+                <p className={address ? 'text-base text-ink' : 'text-base text-ink-muted'}>
+                  {address ? addressLabel(address) : t('checkout.noAddress')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {addresses.length > 0 ? (
+                    <Button variant="secondary" onClick={() => setListOpen(true)}>
+                      {t('checkout.chooseAddress')}
+                    </Button>
+                  ) : null}
+                  <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+                    {t('address.add')}
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                <h2 className="text-base font-semibold">{t('checkout.stepConfirm')}</h2>
-                <dl className="flex flex-col gap-2 text-base">
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-ink-muted">{t('checkout.name')}</dt>
-                    <dd>{form.getValues('name')}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-ink-muted">{t('checkout.phone')}</dt>
-                    <dd className="tabular-nums">{form.getValues('phone')}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-ink-muted">{t('checkout.stepAddress')}</dt>
-                    <dd className="text-right">
-                      {delivery === 'pickup'
-                        ? t('checkout.deliveryPickup')
-                        : `${form.getValues('city')}, ${form.getValues('address')}`}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-ink-muted">{t('checkout.stepPayment')}</dt>
-                    <dd>
-                      {payment === 'card'
-                        ? t('checkout.payCard')
-                        : payment === 'sbp'
-                          ? t('checkout.paySbp')
-                          : t('checkout.payCash')}
-                    </dd>
-                  </div>
-                </dl>
-                <Button variant="primary" size="lg" block loading={pending} onClick={() => void submit()}>
-                  {t('checkout.submit')}
-                </Button>
+            </section>
+
+            <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
+              <h2 className="text-base font-semibold">{t('checkout.recipient')}</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label={`${t('profile.lastName')} *`}
+                  autoComplete="family-name"
+                  error={form.formState.errors.last_name?.message}
+                  {...form.register('last_name')}
+                />
+                <Input
+                  label={`${t('profile.firstName')} *`}
+                  autoComplete="given-name"
+                  error={form.formState.errors.first_name?.message}
+                  {...form.register('first_name')}
+                />
               </div>
-            )}
+              <Input
+                label={`${t('checkout.phone')} *`}
+                type="tel"
+                autoComplete="tel"
+                placeholder="+7 900 000-00-00"
+                error={form.formState.errors.phone?.message}
+                {...form.register('phone')}
+              />
+              {/* Почта не редактируется здесь: она из профиля и служит логином. */}
+              <Input label={`${t('auth.emailLabel')} *`} value={user?.email ?? ''} readOnly hint={t('checkout.emailFromProfile')} />
+              <Input label={t('checkout.comment')} {...form.register('comment')} />
+            </section>
+
+            <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-2 text-base font-semibold">{t('checkout.stepPayment')}</legend>
+                <Radio
+                  name="payment"
+                  checked={payment === 'card'}
+                  onChange={() => setPayment('card')}
+                  label={t('checkout.payCard')}
+                  description="Оплата на защищённой странице банка"
+                />
+                <Radio
+                  name="payment"
+                  checked={payment === 'sbp'}
+                  onChange={() => setPayment('sbp')}
+                  label={t('checkout.paySbp')}
+                  description="По QR-коду через приложение банка"
+                />
+                <Radio
+                  name="payment"
+                  checked={payment === 'cash'}
+                  onChange={() => setPayment('cash')}
+                  label={t('checkout.payCash')}
+                  description="Наличными или картой курьеру"
+                />
+              </fieldset>
+            </section>
           </div>
 
-          <aside className="w-full shrink-0 lg:sticky lg:top-28 lg:w-80">
+          <aside className="w-full shrink-0 lg:sticky lg:top-24 lg:w-80">
             <div className="flex flex-col gap-3 rounded-card bg-surface p-4 shadow-float">
               <div className="flex justify-between text-base">
-                <span className="text-ink-muted">{t('cart.subtotal')}</span>
+                <span className="text-ink-muted">
+                  {t('cart.subtotal')}, {formatPlural(count, { one: 'штука', few: 'штуки', many: 'штук' })}
+                </span>
                 <Price value={subtotal} size="sm" />
               </div>
               <div className="flex justify-between text-base">
@@ -235,20 +259,39 @@ export function Component() {
               </div>
               <div className="flex items-baseline justify-between border-t border-line pt-3">
                 <span className="text-md font-semibold">{t('cart.total')}</span>
-                <Price value={subtotal + deliveryCost} size="lg" />
+                <Price value={total} size="lg" />
               </div>
+
+              <Button variant="primary" size="lg" block loading={pending} onClick={place}>
+                {t('checkout.submit')}
+              </Button>
+
+              <p className="text-2xs text-ink-muted">
+                {t('checkout.legalLead')}{' '}
+                <Link to="/terms" className="text-accent hover:underline">
+                  {t('address.legalTerms')}
+                </Link>{' '}
+                {t('checkout.legalAnd')}{' '}
+                <Link to="/privacy" className="text-accent hover:underline">
+                  {t('address.legalPrivacy')}
+                </Link>
+              </p>
             </div>
           </aside>
         </div>
       </Container>
 
+      <AddressModal open={listOpen} onClose={() => setListOpen(false)} />
+      <AddressPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
+
       <PaymentModal
         open={payOpen}
         method={payment === 'sbp' ? 'sbp' : 'card'}
-        amount={subtotal + deliveryCost}
+        amount={total}
         onSuccess={() => {
           clear()
-          if (placedOrder) navigate(`/checkout/success/${placedOrder.id}`)
+          setPayOpen(false)
+          setDoneOpen(true)
         }}
         onFail={() => {
           setPayOpen(false)
@@ -256,6 +299,21 @@ export function Component() {
         }}
         onClose={() => setPayOpen(false)}
       />
+
+      <Modal open={doneOpen} onClose={() => navigate('/profile/orders')} title={t('checkout.doneTitle')}>
+        <div className="flex flex-col gap-4">
+          <p className="text-base text-ink-muted">
+            {t('checkout.doneText')}
+            {placedOrder ? ` № ${placedOrder.number}.` : '.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink to="/profile/orders" variant="primary">
+              {t('profile.orders')}
+            </ButtonLink>
+            <ButtonLink to="/">{t('common.toCatalog')}</ButtonLink>
+          </div>
+        </div>
+      </Modal>
     </>
   )
 }

@@ -527,6 +527,62 @@ export const handlers = [
     )
   }),
 
+  /* --- Личные разделы профиля. TODO(api): в CRM это уже есть, витрине нужны
+     ручки `account/messages|reviews|questions/`. --- */
+
+  http.get(`${BASE}/account/messages/`, async ({ request }) => {
+    await delay(200)
+    if (!sessionEmail(request)) return new HttpResponse(null, { status: 401 })
+    return HttpResponse.json([
+      {
+        id: 1,
+        seller: 'ДеталиПро',
+        last_message: 'Добрый день! Деталь в наличии, отгрузим завтра.',
+        created_at: new Date(2026, 6, 12).toISOString(),
+        unread: 1,
+      },
+      {
+        id: 2,
+        seller: 'Мото-Склад',
+        last_message: 'Да, этот артикул подходит на ваш VIN.',
+        created_at: new Date(2026, 5, 30).toISOString(),
+        unread: 0,
+      },
+    ])
+  }),
+
+  http.get(`${BASE}/account/reviews/`, async ({ request }) => {
+    await delay(200)
+    if (!sessionEmail(request)) return new HttpResponse(null, { status: 401 })
+    const first = products[0]
+    const second = products[1]
+    return HttpResponse.json(
+      [first, second].filter(Boolean).map((product, index) => ({
+        id: index + 1,
+        product: toListItem(product!),
+        rating: 5 - index,
+        text: index === 0 ? 'Встали идеально, скрипов нет.' : 'Пришло быстро, артикул совпал.',
+        created_at: new Date(2026, 4 + index, 8 + index).toISOString(),
+      })),
+    )
+  }),
+
+  http.get(`${BASE}/account/questions/`, async ({ request }) => {
+    await delay(200)
+    if (!sessionEmail(request)) return new HttpResponse(null, { status: 401 })
+    const first = products[0]
+    if (!first) return HttpResponse.json([])
+    return HttpResponse.json([
+      {
+        id: 1,
+        product: toListItem(first),
+        text: 'Подойдёт ли на дорестайлинг?',
+        answer: 'Да, посадочные размеры совпадают — ставится без доработок.',
+        created_at: new Date(2026, 5, 2).toISOString(),
+      },
+    ])
+  }),
+
   http.get(`${BASE}/products/:slug/questions/`, async ({ params }) => {
     await delay(200)
     const product = products.find((item) => item.slug === params['slug'])

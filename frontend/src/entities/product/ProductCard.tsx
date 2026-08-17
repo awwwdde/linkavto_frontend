@@ -81,8 +81,13 @@ export function ProductCardSkeleton() {
 }
 
 /**
- * Сетка карточек. `dense` — шесть в ряд на широком экране: в лентах «похожие»
- * и «избранное» важнее охват, а не размер карточки.
+ * Сетка карточек. `dense` — до шести в ряд: в лентах «похожие», «избранное» и
+ * «рекомендуем» важнее охват, чем размер карточки.
+ *
+ * Колонки считаются по ширине самой сетки (@container), а не окна. По окну
+ * получалось так: на 1920 внутри кабинета колонка контента всего ~1030px из-за
+ * бокового меню, шесть колонок давали карточки по 159px, и лента выглядела
+ * набором узких полосок.
  */
 export function ProductGrid({
   children,
@@ -94,16 +99,16 @@ export function ProductGrid({
   className?: string
 }) {
   return (
-    <div
-      className={cn(
-        'grid gap-4',
-        dense
-          ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
-          : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-4',
-        className,
-      )}
-    >
-      {children}
+    <div className="@container">
+      <div
+        className={cn(
+          'grid grid-cols-2 gap-4 @md:grid-cols-3 @3xl:grid-cols-4',
+          dense && '@5xl:grid-cols-5 @6xl:grid-cols-6',
+          className,
+        )}
+      >
+        {children}
+      </div>
     </div>
   )
 }

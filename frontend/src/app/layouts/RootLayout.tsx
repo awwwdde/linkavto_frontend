@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router'
 import { ToastViewport } from '@/shared/ui'
 import { AuthModal } from '@/features/auth/AuthModal'
+import { CookieNotice } from '@/features/cookies/CookieNotice'
 import { ScrollToTop } from '@/app/providers/ScrollToTop'
 import { SmoothScrollProvider } from '@/app/providers/SmoothScrollProvider'
 import { CatalogMenu } from './CatalogMenu'
@@ -28,6 +29,8 @@ export function RootLayout() {
 
       <Footer />
       <TabBar />
+
+      <CookieNotice />
 
       {/* Активный слой (§3.4, третий уровень глубины). */}
       <AuthModal />

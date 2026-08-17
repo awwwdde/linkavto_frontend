@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import type { SellerBrief } from '@/shared/api/types'
@@ -7,8 +7,17 @@ import { ProductCard, ProductGrid } from '@/entities/product/ProductCard'
 import { queryKeys } from '@/shared/api/query-keys'
 import { t } from '@/shared/i18n'
 import { formatPlural } from '@/shared/lib/format'
-import { ButtonLink, Checkbox, Container, EmptyState, Img, PageMeta, Price, Stepper, toast } from '@/shared/ui'
-import { IconShare, IconTrash } from '@/shared/ui/Icon'
+import {
+  ButtonLink,
+  Checkbox,
+  Container,
+  EmptyState,
+  Img,
+  PageMeta,
+  Price,
+  Stepper,
+  toast,
+} from '@/shared/ui'
 import { SectionHeading } from '@/app/layouts/SectionHeading'
 import { useCartStore, type GuestCartItem } from '@/features/cart/store'
 
@@ -34,15 +43,22 @@ export function Component() {
   const remove = useCartStore((state) => state.remove)
   const clear = useCartStore((state) => state.clear)
 
-  // Снятые галочки, а не выбранные: новый товар в корзине сразу участвует
-  // в заказе, и ключи ушедших позиций не копятся в состоянии.
-  const [unchecked, setUnchecked] = useState<string[]>([])
-  const isChecked = (key: string) => !unchecked.includes(key)
-  const toggle = (key: string) =>
-    setUnchecked((state) => (state.includes(key) ? state.filter((item) => item !== key) : [...state, key]))
+  // Выбранные позиции. По умолчанию отмечено всё; новая позиция тоже приходит
+  // отмеченной, иначе добавленный товар молча не попадал бы в заказ.
+  const [selected, setSelected] = useState<string[]>(() => items.map((item) => item.key))
+  useEffect(() => {
+    setSelected((current) => {
+      const keys = new Set(items.map((item) => item.key))
+      const kept = current.filter((key) => keys.has(key))
+      const added = items.filter((item) => !current.includes(item.key)).map((item) => item.key)
+      return [...kept, ...added]
+    })
+  }, [items])
 
-  const allChecked = unchecked.length === 0
-  const toggleAll = () => setUnchecked(allChecked ? items.map((item) => item.key) : [])
+  const isSelected = (key: string) => selected.includes(key)
+  const toggle = (key: string) =>
+    setSelected((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
+  const allSelected = items.length > 0 && selected.length === items.length
 
   const groups = useMemo<Group[]>(() => {
     const map = new Map<number, Group>()
@@ -55,27 +71,28 @@ export function Component() {
     return [...map.values()]
   }, [items])
 
-  const selected = items.filter((item) => isChecked(item.key))
-  const subtotal = selected.reduce((sum, item) => sum + (item.offer?.price ?? item.product.price) * item.quantity, 0)
-  const sellersWithSelection = new Set(selected.map((item) => (item.offer?.seller ?? DEFAULT_SELLER).id))
-  const delivery = sellersWithSelection.size * DELIVERY_PER_SELLER
-  const count = selected.reduce((sum, item) => sum + item.quantity, 0)
+  const chosen = items.filter((item) => isSelected(item.key))
+  const subtotal = chosen.reduce((sum, item) => sum + (item.offer?.price ?? item.product.price) * item.quantity, 0)
+  const sellersWithChosen = new Set(chosen.map((item) => item.offer?.seller.id ?? DEFAULT_SELLER.id))
+  const delivery = sellersWithChosen.size * DELIVERY_PER_SELLER
+  const count = chosen.reduce((sum, item) => sum + item.quantity, 0)
 
-  // Ленты внизу — по последнему добавленному товару. «Похожие» это его аналоги,
-  // «Рекомендуем» — его категория, иначе оба блока показали бы одно и то же.
-  const anchor = items[items.length - 1]?.product
+  // Обе ленты считаем от последнего добавленного товара — он и есть текущий
+  // интерес покупателя. «Похожие» — его аналоги, «Рекомендуем» — популярное.
+  const lastAdded = items[items.length - 1]
   const similar = useQuery({
-    queryKey: queryKeys.products.similar(anchor?.slug ?? ''),
-    queryFn: () => fetchSimilarProducts(anchor!.slug),
-    enabled: Boolean(anchor),
+    queryKey: queryKeys.products.similar(lastAdded?.product.slug ?? ''),
+    queryFn: () => fetchSimilarProducts(lastAdded!.product.slug),
+    enabled: Boolean(lastAdded),
   })
+  const recommendedParams = { ordering: 'popular', page_size: 12 }
   const recommended = useQuery({
-    queryKey: queryKeys.products.list({ cart: anchor?.id ?? 0 }),
-    queryFn: () => fetchProducts({ page_size: 12, ordering: 'popular' }),
-    enabled: Boolean(anchor),
+    queryKey: queryKeys.products.list(recommendedParams),
+    queryFn: () => fetchProducts(recommendedParams),
+    enabled: items.length > 0,
   })
 
-  const share = async () => {
+  const shareCart = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
       toast.ok(t('product.copied'))
@@ -84,9 +101,8 @@ export function Component() {
     }
   }
 
-  const clearAll = () => {
+  const clearCart = () => {
     clear()
-    setUnchecked([])
     toast.ok(t('cart.cleared'))
   }
 
@@ -94,7 +110,7 @@ export function Component() {
     <>
       <PageMeta title="Корзина — LINKAVTO" canonicalPath="/cart" noIndex />
 
-      <Container className="flex flex-col gap-6 py-4 lg:py-8">
+      <Container className="flex flex-col gap-10 py-4 lg:py-8">
         <h1 className="text-xl font-semibold lg:text-2xl">{t('cart.title')}</h1>
 
         {items.length === 0 ? (
@@ -106,28 +122,18 @@ export function Component() {
         ) : (
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
             <div className="flex min-w-0 flex-1 flex-col gap-4">
-              {/* Панель действий над списком */}
+              {/* Панель действий над списком. */}
               <div className="flex flex-wrap items-center gap-4 rounded-card bg-surface px-4 py-3 shadow-float">
-                <Checkbox checked={allChecked} onChange={toggleAll} label={t('cart.selectAll')} />
-                <span className="text-sm text-ink-muted">
-                  {t('cart.selected')}: <span className="tabular-nums">{selected.length}</span>
-                </span>
-
-                <div className="ml-auto flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void share()}
-                    className="flex h-10 items-center gap-2 rounded-control px-3 text-base text-ink-muted transition-colors duration-[--duration-fast] hover:bg-ink/5 hover:text-ink"
-                  >
-                    <IconShare width={16} height={16} />
+                <Checkbox
+                  checked={allSelected}
+                  onChange={(event) => setSelected(event.target.checked ? items.map((item) => item.key) : [])}
+                  label={t('cart.selectAll')}
+                />
+                <div className="ml-auto flex items-center gap-4 text-sm">
+                  <button type="button" onClick={() => void shareCart()} className="text-ink-muted hover:text-ink">
                     {t('cart.share')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={clearAll}
-                    className="flex h-10 items-center gap-2 rounded-control px-3 text-base text-ink-muted transition-colors duration-[--duration-fast] hover:bg-ink/5 hover:text-ink"
-                  >
-                    <IconTrash width={16} height={16} />
+                  <button type="button" onClick={clearCart} className="text-ink-muted hover:text-danger">
                     {t('cart.clear')}
                   </button>
                 </div>
@@ -154,7 +160,7 @@ export function Component() {
                     {group.items.map((item) => (
                       <li key={item.key} className="flex gap-3">
                         <Checkbox
-                          checked={isChecked(item.key)}
+                          checked={isSelected(item.key)}
                           onChange={() => toggle(item.key)}
                           aria-label={`${t('cart.selectItem')}: ${item.product.name}`}
                           className="mt-1"
@@ -213,41 +219,34 @@ export function Component() {
                   <Price value={subtotal + delivery} size="lg" />
                 </div>
 
-                {selected.length === 0 ? (
+                {chosen.length === 0 ? (
                   <p className="text-sm text-ink-muted">{t('cart.nothingSelected')}</p>
-                ) : null}
-
-                <ButtonLink
-                  to="/checkout"
-                  variant="primary"
-                  size="lg"
-                  block
-                  className={selected.length === 0 ? 'pointer-events-none opacity-50' : undefined}
-                  aria-disabled={selected.length === 0}
-                >
-                  {t('cart.checkout')}
-                </ButtonLink>
+                ) : (
+                  <ButtonLink to="/checkout" variant="primary" size="lg" block>
+                    {t('cart.checkout')}
+                  </ButtonLink>
+                )}
               </div>
             </aside>
           </div>
         )}
-
-        {recommended.data && recommended.data.results.length > 0 ? (
-          <section className="flex flex-col gap-4 pt-2">
-            <SectionHeading lead={t('cart.recommended')} />
-            <ProductGrid dense>
-              {recommended.data.results.slice(0, 12).map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </ProductGrid>
-          </section>
-        ) : null}
 
         {similar.data && similar.data.length > 0 ? (
           <section className="flex flex-col gap-4">
             <SectionHeading lead={t('product.similar')} />
             <ProductGrid dense>
               {similar.data.slice(0, 12).map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </ProductGrid>
+          </section>
+        ) : null}
+
+        {recommended.data && recommended.data.results.length > 0 ? (
+          <section className="flex flex-col gap-4">
+            <SectionHeading lead={t('cart.recommended')} />
+            <ProductGrid dense>
+              {recommended.data.results.slice(0, 12).map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
             </ProductGrid>
