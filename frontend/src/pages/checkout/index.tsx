@@ -15,7 +15,6 @@ import {
   Modal,
   PageMeta,
   Price,
-  Radio,
   toast,
 } from '@/shared/ui'
 import { useAuthStore } from '@/features/auth/store'
@@ -24,7 +23,6 @@ import { useCartStore } from '@/features/cart/store'
 import { useAddressStore } from '@/features/address/store'
 import { AddressModal, addressLabel } from '@/features/address/AddressModal'
 import { AddressPicker } from '@/features/address/AddressPicker'
-import { PaymentModal } from '@/features/checkout/PaymentModal'
 
 const DELIVERY_PER_SELLER = 39000
 
@@ -47,10 +45,7 @@ export function Component() {
   const openAuth = useUiStore((state) => state.openAuth)
   const addresses = useAddressStore((state) => state.addresses)
 
-  const [delivery, setDelivery] = useState<Delivery>('cdek')
-  const [payment, setPayment] = useState<Payment>('card')
   const [pending, setPending] = useState(false)
-  const [payOpen, setPayOpen] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [placedOrder, setPlacedOrder] = useState<{ id: number; number: string } | null>(null)
@@ -69,10 +64,19 @@ export function Component() {
   // Адрес берём основной из списка профиля — его же меняют кнопки ниже.
   const address = addresses.find((item) => item.is_default) ?? addresses[0] ?? null
 
+  /*
+   * Отдельного выбора доставки нет: способ определяется самим адресом —
+   * пункт выдачи знает своего оператора, курьерский адрес едет СДЭКом.
+   * Самовывоз из ПВЗ бесплатный, доставка курьером считается по продавцам.
+   */
+  const deliveryMethod: Delivery =
+    address?.delivery_type === 'pickup' ? (address.pickup_provider === 'post' ? 'post' : 'cdek') : 'cdek'
+  const isPickup = address?.delivery_type === 'pickup'
+
   const subtotal = items.reduce((sum, item) => sum + (item.offer?.price ?? item.product.price) * item.quantity, 0)
   const count = items.reduce((sum, item) => sum + item.quantity, 0)
   const sellersCount = new Set(items.map((item) => item.offer?.seller.id ?? 0)).size
-  const deliveryCost = delivery === 'pickup' ? 0 : sellersCount * DELIVERY_PER_SELLER
+  const deliveryCost = isPickup ? 0 : sellersCount * DELIVERY_PER_SELLER
   const total = subtotal + deliveryCost
 
   if (items.length === 0 && !doneOpen) {
@@ -93,8 +97,9 @@ export function Component() {
     try {
       const values = form.getValues()
       const order = await post<{ id: number; number: string }>('orders/', {
-        delivery_method: delivery,
-        payment_method: payment,
+        delivery_method: deliveryMethod,
+        // TODO(api): онлайн-оплаты пока нет — заказ уходит с расчётом при получении.
+        payment_method: 'cash' satisfies Payment,
         address: address ? addressLabel(address) : '',
         email: user?.email ?? '',
         items: items.map((item) => ({
@@ -105,13 +110,8 @@ export function Component() {
         ...values,
       })
       setPlacedOrder(order)
-      // Онлайн-оплата — через мок-эквайер; наличными — сразу успех.
-      if (payment === 'cash') {
-        clear()
-        setDoneOpen(true)
-      } else {
-        setPayOpen(true)
-      }
+      clear()
+      setDoneOpen(true)
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t('common.errorText'))
     } finally {
@@ -143,32 +143,7 @@ export function Component() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
-              <fieldset className="flex flex-col gap-2">
-                <legend className="mb-2 text-base font-semibold">{t('checkout.stepAddress')}</legend>
-                <Radio
-                  name="delivery"
-                  checked={delivery === 'cdek'}
-                  onChange={() => setDelivery('cdek')}
-                  label={t('checkout.deliveryCdek')}
-                  description="Пункт выдачи или курьер, 2–5 дней"
-                />
-                <Radio
-                  name="delivery"
-                  checked={delivery === 'post'}
-                  onChange={() => setDelivery('post')}
-                  label={t('checkout.deliveryPost')}
-                  description="Доставка в отделение, 5–12 дней"
-                />
-                <Radio
-                  name="delivery"
-                  checked={delivery === 'pickup'}
-                  onChange={() => setDelivery('pickup')}
-                  label={t('checkout.deliveryPickup')}
-                  description="Со склада продавца, бесплатно"
-                />
-              </fieldset>
-
-              <div className="flex flex-col gap-2 border-t border-line pt-4">
+              <div className="flex flex-col gap-2">
                 <span className="text-base font-semibold">
                   {t('checkout.address')} <span className="text-danger">*</span>
                 </span>
@@ -217,32 +192,6 @@ export function Component() {
               <Input label={t('checkout.comment')} {...form.register('comment')} />
             </section>
 
-            <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-float lg:p-6">
-              <fieldset className="flex flex-col gap-2">
-                <legend className="mb-2 text-base font-semibold">{t('checkout.stepPayment')}</legend>
-                <Radio
-                  name="payment"
-                  checked={payment === 'card'}
-                  onChange={() => setPayment('card')}
-                  label={t('checkout.payCard')}
-                  description="Оплата на защищённой странице банка"
-                />
-                <Radio
-                  name="payment"
-                  checked={payment === 'sbp'}
-                  onChange={() => setPayment('sbp')}
-                  label={t('checkout.paySbp')}
-                  description="По QR-коду через приложение банка"
-                />
-                <Radio
-                  name="payment"
-                  checked={payment === 'cash'}
-                  onChange={() => setPayment('cash')}
-                  label={t('checkout.payCash')}
-                  description="Наличными или картой курьеру"
-                />
-              </fieldset>
-            </section>
           </div>
 
           <aside className="w-full shrink-0 lg:sticky lg:top-24 lg:w-80">
@@ -283,22 +232,6 @@ export function Component() {
 
       <AddressModal open={listOpen} onClose={() => setListOpen(false)} />
       <AddressPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
-
-      <PaymentModal
-        open={payOpen}
-        method={payment === 'sbp' ? 'sbp' : 'card'}
-        amount={total}
-        onSuccess={() => {
-          clear()
-          setPayOpen(false)
-          setDoneOpen(true)
-        }}
-        onFail={() => {
-          setPayOpen(false)
-          if (placedOrder) navigate(`/checkout/fail/${placedOrder.id}`)
-        }}
-        onClose={() => setPayOpen(false)}
-      />
 
       <Modal open={doneOpen} onClose={() => navigate('/profile/orders')} title={t('checkout.doneTitle')}>
         <div className="flex flex-col gap-4">
