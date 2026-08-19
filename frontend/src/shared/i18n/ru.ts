@@ -87,19 +87,6 @@ export const ru = {
   'garageContext.onlyFits': 'Только подходящие',
   'garageContext.showAll': 'Показать все',
 
-  'common.search': 'Поиск',
-
-  'service.title': 'Запчасти для ТО',
-  'service.lead': 'Подберите автомобиль — покажем расходники, которые ему подходят.',
-  'service.stepType': 'Тип техники',
-  'service.stepBrand': 'Марка',
-  'service.stepModel': 'Модель',
-  'service.stepGeneration': 'Поколение',
-  'service.stepModification': 'Модификация',
-  'service.reset': 'Начать заново',
-  'service.consumable': 'Тип расходника',
-  'service.withDiscount': 'Со скидкой',
-
   'catalog.title': 'Каталог',
   'catalog.filters': 'Фильтры',
   'catalog.filtersApply': 'Показать',

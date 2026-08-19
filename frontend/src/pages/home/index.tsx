@@ -64,9 +64,7 @@ function TechBento() {
       {(tree.data as CategoryNode[]).map((node) => (
         <CategoryTile
           key={node.id}
-          // «Для ТО» ведёт не в каталог, а на подбор: расходники показываем
-          // только после выбора конкретной модификации.
-          to={node.vehicle_type === 'service' ? '/dlya-to' : `/category/${node.path}`}
+          to={`/category/${node.path}`}
           name={node.name}
           icon={typeIcon(node.vehicle_type)}
         />

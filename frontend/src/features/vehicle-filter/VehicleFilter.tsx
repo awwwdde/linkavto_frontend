@@ -10,7 +10,6 @@ import { useCatalogParams, type VehicleLevel } from '@/features/catalog-filters/
 import { useActiveVehicle } from '@/features/garage/store'
 import {
   fetchVehicleBrands,
-  fetchVehicleClasses,
   fetchVehicleGenerations,
   fetchVehicleModels,
   fetchVehicleModifications,
@@ -26,54 +25,51 @@ const VEHICLE_KINDS: { value: VehicleKind; label: string }[] = [
 interface Option {
   slug: string
   name: string
-  /** Заголовок группы в списке — марка для моделей, модель для поколений и т.д. */
-  group?: string
 }
 
-interface StepProps {
-  label: string
-  value: string | null
-  options: Option[]
-  loading: boolean
-  onChange: (slug: string | null) => void
+interface ChosenStep {
+  level: VehicleLevel
+  name: string
 }
 
 /**
- * Шаг подбора. Никогда не блокируется: если предыдущий уровень не выбран,
- * список приходит полным и группируется по родителю.
+ * Открытый шаг подбора — ровно один на экране. Предыдущие уровни свёрнуты в
+ * чипы выше, следующие ещё не показаны, поэтому панель не растёт в высоту.
  */
-function Step({ label, value, options, loading, onChange }: StepProps) {
-  const grouped = options.some((option) => option.group)
-
-  const groups = grouped
-    ? options.reduce<Map<string, Option[]>>((acc, option) => {
-        const key = option.group ?? '—'
-        const bucket = acc.get(key)
-        if (bucket) bucket.push(option)
-        else acc.set(key, [option])
-        return acc
-      }, new Map())
-    : null
-
+function Step({
+  label,
+  options,
+  loading,
+  onChange,
+}: {
+  label: string
+  options: Option[]
+  loading: boolean
+  onChange: (slug: string | null) => void
+}) {
   return (
-    <Select label={label} value={value ?? ''} onChange={(event) => onChange(event.target.value || null)}>
+    <Select label={label} value="" onChange={(event) => onChange(event.target.value || null)}>
       <option value="">{loading ? `${t('common.loading')}…` : t('vehicleFilter.any')}</option>
-      {groups
-        ? [...groups.entries()].map(([group, items]) => (
-            <optgroup key={group} label={group}>
-              {items.map((option) => (
-                <option key={option.slug} value={option.slug}>
-                  {option.name}
-                </option>
-              ))}
-            </optgroup>
-          ))
-        : options.map((option) => (
-            <option key={option.slug} value={option.slug}>
-              {option.name}
-            </option>
-          ))}
+      {options.map((option) => (
+        <option key={option.slug} value={option.slug}>
+          {option.name}
+        </option>
+      ))}
     </Select>
+  )
+}
+
+/** Выбранный уровень: клик снимает его и все, что ниже. */
+function ChosenChip({ name, onClear }: { name: string; onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-pill bg-accent/10 px-3 text-sm text-accent transition-colors duration-[--duration-fast] hover:bg-accent/15"
+    >
+      <span className="truncate">{name}</span>
+      <IconClose width={14} height={14} className="shrink-0" />
+    </button>
   )
 }
 
@@ -104,10 +100,6 @@ export function VehicleFilter({ className, mode = 'full', lockedKind = null }: V
   // Тип техники скрыт только там, где его задаёт сам раздел (locked).
   const showTypeChips = mode !== 'locked'
 
-  const classes = useQuery({
-    queryKey: ['vehicle', 'classes', kind],
-    queryFn: () => fetchVehicleClasses(kind),
-  })
 
   const brands = useQuery({
     queryKey: ['vehicle', 'brands', kind, params.vehicleClass],
@@ -137,11 +129,6 @@ export function VehicleFilter({ className, mode = 'full', lockedKind = null }: V
     }
 
     switch (level) {
-      case 'vehicleClass': {
-        const option = classes.data?.find((item) => item.slug === slug)
-        applyVehicle({ vehicleType: option?.vehicle_type ?? kind, vehicleClass: slug }, 'vehicleClass')
-        break
-      }
       case 'brand': {
         const option = brands.data?.find((item) => item.slug === slug)
         applyVehicle({ vehicleType: option?.vehicle_type ?? kind, brand: slug }, 'brand')
@@ -186,6 +173,21 @@ export function VehicleFilter({ className, mode = 'full', lockedKind = null }: V
         applyVehicle({ vehicleType: slug as VehicleKind }, 'vehicleType')
     }
   }
+
+  /**
+   * Подписи выбранных уровней. Имя берём из справочника, а пока он грузится —
+   * из слага: иначе чип на миг схлопывается в пустоту и строка прыгает.
+   */
+  const nameOf = (list: { slug: string; name: string }[] | undefined, slug: string) =>
+    list?.find((item) => item.slug === slug)?.name ?? slug
+
+  const steps: (ChosenStep | null)[] = [
+    params.brand ? { level: 'brand', name: nameOf(brands.data, params.brand) } : null,
+    params.model ? { level: 'model', name: nameOf(models.data, params.model) } : null,
+    params.generation ? { level: 'generation', name: nameOf(generations.data, params.generation) } : null,
+    params.modification ? { level: 'modification', name: nameOf(modifications.data, params.modification) } : null,
+  ]
+  const chosen = steps.filter((step): step is ChosenStep => step !== null)
 
   const showReset = vehicleDepth > 0 || garageApplied
 
@@ -271,63 +273,46 @@ export function VehicleFilter({ className, mode = 'full', lockedKind = null }: V
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-3">
-            <Step
-              label={t('vehicleFilter.class')}
-              value={params.vehicleClass}
-              loading={classes.isFetching}
-              options={(classes.data ?? []).map((item) => ({
-                slug: item.slug,
-                name: item.name,
-                ...(kind ? {} : { group: VEHICLE_KINDS.find((k) => k.value === item.vehicle_type)?.label }),
-              }))}
-              onChange={(slug) => select('vehicleClass', slug)}
-            />
+          {/* Выбранные уровни — строкой чипов. Клик по чипу снимает его и всё,
+              что ниже, поэтому вернуться на шаг назад — одно нажатие. */}
+          {chosen.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {chosen.map((step) => (
+                <ChosenChip key={step.level} name={step.name} onClear={() => select(step.level, null)} />
+              ))}
+            </div>
+          ) : null}
+
+          {/* Открыт ровно один шаг — следующий после последнего выбранного. */}
+          {!params.brand ? (
             <Step
               label={t('vehicleFilter.brand')}
-              value={params.brand}
               loading={brands.isFetching}
-              options={(brands.data ?? []).map((item) => ({
-                slug: item.slug,
-                name: item.name,
-                ...(kind ? {} : { group: VEHICLE_KINDS.find((k) => k.value === item.vehicle_type)?.label }),
-              }))}
+              options={(brands.data ?? []).map((item) => ({ slug: item.slug, name: item.name }))}
               onChange={(slug) => select('brand', slug)}
             />
+          ) : !params.model ? (
             <Step
               label={t('vehicleFilter.model')}
-              value={params.model}
               loading={models.isFetching}
-              options={(models.data ?? []).map((item) => ({
-                slug: item.slug,
-                name: item.name,
-                ...(params.brand ? {} : { group: item.brand_name }),
-              }))}
+              options={(models.data ?? []).map((item) => ({ slug: item.slug, name: item.name }))}
               onChange={(slug) => select('model', slug)}
             />
+          ) : !params.generation ? (
             <Step
               label={t('vehicleFilter.generation')}
-              value={params.generation}
               loading={generations.isFetching}
-              options={(generations.data ?? []).map((item) => ({
-                slug: item.slug,
-                name: item.name,
-                ...(params.model ? {} : { group: item.model_name }),
-              }))}
+              options={(generations.data ?? []).map((item) => ({ slug: item.slug, name: item.name }))}
               onChange={(slug) => select('generation', slug)}
             />
+          ) : !params.modification ? (
             <Step
               label={t('vehicleFilter.modification')}
-              value={params.modification}
               loading={modifications.isFetching}
-              options={(modifications.data ?? []).map((item) => ({
-                slug: item.slug,
-                name: item.name,
-                ...(params.generation ? {} : { group: item.generation_name }),
-              }))}
+              options={(modifications.data ?? []).map((item) => ({ slug: item.slug, name: item.name }))}
               onChange={(slug) => select('modification', slug)}
             />
-          </div>
+          ) : null}
         </>
       )}
     </section>
