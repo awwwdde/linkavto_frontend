@@ -147,7 +147,11 @@ export function Component() {
 
           <div className="flex gap-8">
             <aside className="hidden w-72 shrink-0 lg:block">
-              <div className="sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-card bg-surface p-4 shadow-float">
+              {/* data-lenis-prevent: иначе колесо над панелью крутит страницу. */}
+              <div
+                data-lenis-prevent
+                className="scrollbar-thin sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-card bg-surface p-4 shadow-float"
+              >
                 <CatalogFilters data={products.data} />
               </div>
             </aside>

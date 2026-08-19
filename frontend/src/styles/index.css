@@ -123,6 +123,28 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Тонкая полоса прокрутки на токенах: системная в узкой колонке фильтров
+     занимает до 17px и выглядит инородно. Дорожка прозрачная, ползунок
+     проявляется на наведении. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-line);
+    border-radius: var(--radius-pill);
+  }
+  .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-ink-ghost);
+  }
 }
 
 @layer components {

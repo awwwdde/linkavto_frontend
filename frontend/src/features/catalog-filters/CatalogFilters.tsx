@@ -1,45 +1,11 @@
-import type { CategoryDetail, FacetOption, ProductListResponse, TireWheelFacets } from '@/shared/api/types'
+import type { CategoryDetail, ProductListResponse, TireWheelFacets } from '@/shared/api/types'
 import { t, type TranslationKey } from '@/shared/i18n'
 import { Button, Checkbox, Select } from '@/shared/ui'
 import { VehicleFilter } from '@/features/vehicle-filter/VehicleFilter'
 import { filterProfile } from './filter-profile'
 import { PriceHistogramSlider } from './PriceHistogramSlider'
+import { FacetGroup } from './FacetGroup'
 import { useCatalogParams, type TireWheelKey } from './useCatalogParams'
-
-function FacetGroup({
-  title,
-  options,
-  selected,
-  onToggle,
-}: {
-  title: string
-  options: FacetOption[]
-  selected: string[]
-  onToggle: (value: string) => void
-}) {
-  if (options.length === 0) return null
-
-  return (
-    <fieldset className="flex flex-col gap-1">
-      <legend className="mb-2 text-base font-semibold">{title}</legend>
-      <div className="flex max-h-64 flex-col overflow-y-auto">
-        {options.map((option) => (
-          <Checkbox
-            key={option.value}
-            checked={selected.includes(option.value)}
-            onChange={() => onToggle(option.value)}
-            label={
-              <span className="flex w-full items-baseline justify-between gap-3">
-                <span>{option.label}</span>
-                <span className="text-sm text-ink-muted tabular-nums">{option.count}</span>
-              </span>
-            }
-          />
-        ))}
-      </div>
-    </fieldset>
-  )
-}
 
 const TIRE_WHEEL_FIELDS: { key: TireWheelKey; facet: keyof TireWheelFacets; labelKey: TranslationKey }[] = [
   { key: 'tire_diameter', facet: 'tire_diameter', labelKey: 'tires.diameter' },
@@ -106,6 +72,14 @@ function TireWheelFilters({ facets }: { facets: TireWheelFacets }) {
   )
 }
 
+/** Названия фасетов, у которых в панели есть собственный блок. */
+const DEDICATED_FACETS = new Set([
+  t('catalog.brand').toLowerCase(),
+  t('catalog.countryOfOrigin').toLowerCase(),
+  t('catalog.productBrand').toLowerCase(),
+  t('catalog.manufacturer').toLowerCase(),
+])
+
 export interface CatalogFiltersProps {
   data: ProductListResponse | undefined
   /** Текущая категория — задаёт профиль фильтров (§ умные фильтры по разделу). */
@@ -151,28 +125,37 @@ export function CatalogFilters({ data, category, onApplied }: CatalogFiltersProp
         </fieldset>
       ) : null}
 
-      <FacetGroup
-        title={t('catalog.manufacturer')}
-        options={data?.facets.manufacturers ?? []}
-        selected={params.manufacturers}
-        onToggle={(value) => {
-          toggleInList('manufacturer', value)
-          onApplied?.()
-        }}
-      />
+      {/* Бренд и страна — две грани одного, поэтому одним блоком: порознь они
+          читались как два конкурирующих фильтра с похожими названиями. */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">{t('catalog.production')}</h2>
 
-      <FacetGroup
-        title={t('catalog.productBrand')}
-        options={data?.facets.product_brands ?? []}
-        selected={params.productBrands}
-        onToggle={(value) => {
-          toggleInList('product_brand', value)
-          onApplied?.()
-        }}
-      />
+        <FacetGroup
+          title={t('catalog.brand')}
+          options={data?.facets.product_brands ?? []}
+          selected={params.productBrands}
+          onToggle={(value) => {
+            toggleInList('product_brand', value)
+            onApplied?.()
+          }}
+        />
 
-      {/* §5: динамические атрибутные фильтры категории (как в старом каталоге). */}
-      {(data?.facets.attributes ?? []).map((facet) => (
+        <FacetGroup
+          title={t('catalog.countryOfOrigin')}
+          options={data?.facets.manufacturers ?? []}
+          selected={params.manufacturers}
+          onToggle={(value) => {
+            toggleInList('manufacturer', value)
+            onApplied?.()
+          }}
+        />
+      </section>
+
+      {/* §5: динамические атрибутные фильтры категории (как в старом каталоге).
+          Атрибуты, дублирующие блок «Производство», отбрасываем: бэк отдаёт
+          страну и в `manufacturers`, и отдельным атрибутом, и в панели
+          появлялись два одинаковых фасета подряд. */}
+      {(data?.facets.attributes ?? []).filter((facet) => !DEDICATED_FACETS.has(facet.label.trim().toLowerCase())).map((facet) => (
         <FacetGroup
           key={facet.code}
           title={facet.label}
@@ -186,7 +169,8 @@ export function CatalogFilters({ data, category, onApplied }: CatalogFiltersProp
       ))}
 
       <fieldset className="flex flex-col gap-1">
-        <legend className="mb-2 text-base font-semibold">{t('catalog.filters')}</legend>
+        {/* Было «Фильтры» — группа «Фильтры» внутри панели фильтров ни о чём. */}
+        <legend className="mb-2 text-base font-semibold">{t('catalog.availability')}</legend>
         <Checkbox
           checked={params.inStock}
           onChange={(event) => {

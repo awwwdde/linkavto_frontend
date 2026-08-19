@@ -87,6 +87,8 @@ export const ru = {
   'garageContext.onlyFits': 'Только подходящие',
   'garageContext.showAll': 'Показать все',
 
+  'common.search': 'Поиск',
+
   'catalog.title': 'Каталог',
   'catalog.filters': 'Фильтры',
   'catalog.filtersApply': 'Показать',
@@ -111,6 +113,12 @@ export const ru = {
   'catalog.allSubcategories': 'Все подкатегории',
   'catalog.upOneLevel': 'На уровень выше',
   'catalog.nothingFound': 'Ничего не нашлось',
+  'catalog.showAllValues': 'Показать все',
+  'catalog.collapseValues': 'Свернуть',
+  'catalog.production': 'Производство',
+  'catalog.countryOfOrigin': 'Страна производства',
+  'catalog.brand': 'Бренд',
+  'catalog.availability': 'Наличие',
 
   'vehicleFilter.title': 'Подбор по автомобилю',
   'vehicleFilter.pickByVehicle': 'Подобрать по автомобилю',
