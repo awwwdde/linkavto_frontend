@@ -270,8 +270,13 @@ export const sellers: SellerBrief[] = [
   { id: 4, name: 'Мото-Склад', slug: 'moto-sklad', rating: 4.9, reviews_count: 233 },
 ]
 
-const MANUFACTURERS = ['Bosch', 'Febi', 'Sachs', 'TRW', 'Mann-Filter', 'Lemförder', 'NGK', 'Brembo']
-const PRODUCT_BRANDS = ['LINKAVTO Original', 'AutoLine', 'PartMax', 'ProDrive']
+/**
+ * Бренд детали (VAG, Bosch) и страна производства — разные вещи: один бренд
+ * выпускается и в Германии, и в Китае, и покупатель отсекает именно страну.
+ * Поле `manufacturer` в контракте хранит страну, `product_brand` — бренд.
+ */
+const PRODUCT_BRANDS = ['Bosch', 'Febi', 'Sachs', 'TRW', 'Mann-Filter', 'Lemförder', 'NGK', 'Brembo']
+const COUNTRIES = ['Германия', 'Китай', 'Россия', 'Япония', 'Корея', 'Турция']
 
 /** Разброс цен привязан к типу детали, иначе фикстуры выглядят абсурдно. */
 const PRICE_BANDS: { match: RegExp; min: number; max: number }[] = [
@@ -315,6 +320,34 @@ const KIND_BY_VEHICLE_TYPE: Record<VehicleType, VehicleKind | 'universal'> = {
   service: 'universal',
 }
 
+/**
+ * Параметры шин и дисков — обычные атрибуты товара, а не отдельная ветка
+ * контракта: тогда они и фильтруют, и рисуются той же панелью, что остальные
+ * фасеты. Раньше бэк отдавал их в `facets.tire_wheel`, но выдачу по ним не
+ * сужал — фильтры выглядели рабочими и ничего не делали.
+ */
+function tireWheelAttributes(
+  rootType: VehicleType,
+  isWheel: boolean,
+  id: number,
+): { name: string; value: string }[] {
+  if (rootType !== 'tires') return []
+  if (isWheel) {
+    return [
+      { name: 'Диаметр', value: String([14, 15, 16, 17, 18, 19][id % 6]) },
+      { name: 'PCD', value: (['4x98', '4x100', '5x108', '5x114.3'] as const)[id % 4]! },
+      { name: 'Вылет', value: (['ET35', 'ET40', 'ET45'] as const)[id % 3]! },
+      { name: 'Тип диска', value: (['Литой', 'Штампованный', 'Кованый'] as const)[id % 3]! },
+    ]
+  }
+  return [
+    { name: 'Диаметр', value: String([13, 14, 15, 16, 17, 18, 19, 20][id % 8]) },
+    { name: 'Ширина', value: String([175, 185, 195, 205, 215, 225, 235][id % 7]) },
+    { name: 'Профиль', value: String([45, 50, 55, 60, 65, 70][id % 6]) },
+    { name: 'Сезонность', value: (['Летние', 'Зимние', 'Всесезонные'] as const)[id % 3]! },
+  ]
+}
+
 {
   const random = rng(20260723)
   let id = 1
@@ -325,10 +358,10 @@ const KIND_BY_VEHICLE_TYPE: Record<VehicleType, VehicleKind | 'universal'> = {
     const count = 10 + Math.floor(random() * 12)
 
     for (let index = 0; index < count; index += 1) {
-      const manufacturer = MANUFACTURERS[Math.floor(random() * MANUFACTURERS.length)]!
       const productBrand = PRODUCT_BRANDS[Math.floor(random() * PRODUCT_BRANDS.length)]!
-      const sku = `${manufacturer.slice(0, 2).toUpperCase()}${100000 + Math.floor(random() * 899999)}`
-      const name = `${leaf.name} ${manufacturer}`
+      const manufacturer = COUNTRIES[Math.floor(random() * COUNTRIES.length)]!
+      const sku = `${productBrand.slice(0, 2).toUpperCase()}${100000 + Math.floor(random() * 899999)}`
+      const name = `${leaf.name} ${productBrand}`
       const price = priceFor(leaf.name, random)
       const hasDiscount = random() > 0.72
       const oldPrice = hasDiscount ? Math.round(price * (1.15 + random() * 0.35)) : null
@@ -397,7 +430,7 @@ const KIND_BY_VEHICLE_TYPE: Record<VehicleType, VehicleKind | 'universal'> = {
           .toString()
           .padStart(5, '0')}-${Math.floor(random() * 9000 + 1000)}`,
         crosses: Array.from({ length: 2 + Math.floor(random() * 3) }, () => {
-          const crossManufacturer = MANUFACTURERS[Math.floor(random() * MANUFACTURERS.length)]!
+          const crossManufacturer = PRODUCT_BRANDS[Math.floor(random() * PRODUCT_BRANDS.length)]!
           return {
             sku: `${crossManufacturer.slice(0, 2).toUpperCase()}${100000 + Math.floor(random() * 899999)}`,
             manufacturer: crossManufacturer,
@@ -410,16 +443,12 @@ const KIND_BY_VEHICLE_TYPE: Record<VehicleType, VehicleKind | 'universal'> = {
               .slice(0, 3)
           : ['Универсальная деталь'],
         attributes: [
-          { name: 'Производитель', value: manufacturer },
-          { name: 'Бренд товара', value: productBrand },
+          { name: 'Бренд', value: productBrand },
+          { name: 'Страна производства', value: manufacturer },
           { name: 'Вес, кг', value: (0.4 + random() * 6).toFixed(2) },
-          { name: 'Тип товара', value: (['Оригинал', 'Аналог', 'Восстановленный'] as const)[id % 3]! },
-          { name: 'Сторона установки', value: (['Левая', 'Правая', 'Не применимо'] as const)[id % 3]! },
+          { name: 'Тип товара', value: (['Оригинал', 'Аналог'] as const)[id % 2]! },
           { name: 'Гарантия', value: (['6 месяцев', '12 месяцев', '24 месяца'] as const)[id % 3]! },
-          {
-            name: 'Страна производства',
-            value: (['Германия', 'Япония', 'Китай', 'Россия', 'Корея'] as const)[id % 5]!,
-          },
+          ...tireWheelAttributes(rootType, breadcrumbs.some((crumb) => crumb.name === 'Диски'), id),
         ],
         category: {
           id: leaf.id,
@@ -449,7 +478,7 @@ const KIND_BY_VEHICLE_TYPE: Record<VehicleType, VehicleKind | 'universal'> = {
 
 /** Бренд товара берём из атрибутов — отдельного поля в типе списка нет. */
 export function productBrandOf(product: ProductDetail): string {
-  return product.attributes.find((attribute) => attribute.name === 'Бренд товара')?.value ?? PRODUCT_BRANDS[0]!
+  return product.attributes.find((attribute) => attribute.name === 'Бренд')?.value ?? PRODUCT_BRANDS[0]!
 }
 
 /**
@@ -458,10 +487,15 @@ export function productBrandOf(product: ProductDetail): string {
  * `volume`, `material` и т.п. по категориям — см. API_REQUESTS.md).
  */
 export const ATTRIBUTE_FACET_DEFS: { name: string; code: string }[] = [
+  { name: 'Диаметр', code: 'attr_diameter' },
+  { name: 'Ширина', code: 'attr_width' },
+  { name: 'Профиль', code: 'attr_profile' },
+  { name: 'Сезонность', code: 'attr_season' },
+  { name: 'PCD', code: 'attr_pcd' },
+  { name: 'Вылет', code: 'attr_offset' },
+  { name: 'Тип диска', code: 'attr_wheel_type' },
   { name: 'Тип товара', code: 'attr_grade' },
-  { name: 'Сторона установки', code: 'attr_side' },
   { name: 'Гарантия', code: 'attr_warranty' },
-  { name: 'Страна производства', code: 'attr_country' },
 ]
 
 /** Собирает атрибутные фасеты по товарам текущей выборки (пустые группы отбрасывает). */
@@ -501,7 +535,8 @@ export function offersFor(product: ProductDetail): Offer[] {
     return {
       id: product.id * 10 + index,
       seller,
-      manufacturer: index === 0 ? product.manufacturer! : MANUFACTURERS[Math.floor(random() * MANUFACTURERS.length)]!,
+      // У предложения та же семантика, что и у товара: это страна производства.
+      manufacturer: index === 0 ? product.manufacturer! : COUNTRIES[Math.floor(random() * COUNTRIES.length)]!,
       price: Math.round(product.price * (0.92 + random() * 0.3)),
       delivery_days: Math.floor(random() * 9),
       stock: 1 + Math.floor(random() * 20),
@@ -576,18 +611,42 @@ export function questionsFor(product: ProductDetail): Question[] {
   }))
 }
 
+const banner = (file: string, alt: string): ImageSet => ({
+  thumb: `/banners/${file}`,
+  card: `/banners/${file}`,
+  full: `/banners/${file}`,
+  alt,
+})
+
 export const banners: Banner[] = [
   {
     id: 1,
-    title: 'Качественные автозапчасти',
-    subtitle: 'Для любых авто и любых задач',
-    image: {
-      thumb: '/banners/hero-1.png',
-      card: '/banners/hero-1.png',
-      full: '/banners/hero-1.png',
-      alt: 'Качественные автозапчасти для любых авто',
-    },
-    url: '/garage',
+    title: 'Качественные запчасти для вашего авто',
+    subtitle: 'Надёжность. Проверено временем.',
+    image: banner('promo-parts.png', 'Качественные запчасти для вашего авто'),
+    url: '/category/legkovye',
+  },
+  {
+    id: 4,
+    title: 'Автохимия и расходники',
+    subtitle: 'Всё для планового обслуживания',
+    image: banner('promo-chemistry.png', 'Автохимия и расходники для обслуживания'),
+    url: '/category/dlya-to',
+  },
+  {
+    id: 5,
+    title: 'Шины и диски',
+    subtitle: 'Подбор по размеру и сезону',
+    image: banner('promo-tires.png', 'Шины и диски — подбор по размеру и сезону'),
+    url: '/category/shiny-i-diski',
+  },
+  // TODO(api): реальные баннеры приходят от контент-менеджера (API_REQUESTS §2).
+  {
+    id: 2,
+    title: 'Новый двигатель заказывали?',
+    subtitle: 'Бесплатно довезём его до авто',
+    image: banner('hero-2.png', 'Новый двигатель заказывали — бесплатно довезём до авто'),
+    url: '/category/legkovye/dvigatel',
   },
 ]
 
@@ -618,6 +677,7 @@ export const garageVehicles: GarageVehicle[] = [
     vehicle_type: 'car',
     make: 'Lada',
     model: 'Vesta',
+    generation: 'I (2015—2022)',
     modification: '1.6 MT (106 л.с.)',
     year: 2019,
     vin: null,

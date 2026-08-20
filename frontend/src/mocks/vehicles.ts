@@ -165,13 +165,40 @@ const BRAND_SEEDS: Record<VehicleKind, BrandSeed[]> = {
   ],
 }
 
-const MODIFICATION_SEEDS = [
-  { name: '1.6 MT (106 л.с.)', engine: '1.6 бензин', power: 106 },
-  { name: '1.6 CVT (113 л.с.)', engine: '1.6 бензин', power: 113 },
-  { name: '1.8 MT (122 л.с.)', engine: '1.8 бензин', power: 122 },
-  { name: '2.0 AT (150 л.с.)', engine: '2.0 бензин', power: 150 },
-  { name: '2.0 TDI (143 л.с.)', engine: '2.0 дизель', power: 143 },
-]
+/**
+ * Модификации разведены по типам техники. Раньше список был общий, и у КамАЗа
+ * с мотоциклом одинаково значилось «1.6 MT (106 л.с.)».
+ */
+const MODIFICATION_SEEDS: Record<VehicleKind, { name: string; engine: string; power: number }[]> = {
+  car: [
+    { name: '1.6 MT (106 л.с.)', engine: '1.6 бензин', power: 106 },
+    { name: '1.6 CVT (113 л.с.)', engine: '1.6 бензин', power: 113 },
+    { name: '1.8 MT (122 л.с.)', engine: '1.8 бензин', power: 122 },
+    { name: '2.0 AT (150 л.с.)', engine: '2.0 бензин', power: 150 },
+    { name: '2.0 TDI (143 л.с.)', engine: '2.0 дизель', power: 143 },
+  ],
+  truck: [
+    { name: '6.7 МКПП (240 л.с.)', engine: '6.7 дизель', power: 240 },
+    { name: '11.8 МКПП (400 л.с.)', engine: '11.8 дизель', power: 400 },
+    { name: '12.4 АКПП (428 л.с.)', engine: '12.4 дизель', power: 428 },
+    { name: '10.5 МКПП (330 л.с.)', engine: '10.5 дизель', power: 330 },
+    { name: '13.0 АКПП (510 л.с.)', engine: '13.0 дизель', power: 510 },
+  ],
+  moto: [
+    { name: '321 см³ (34 л.с.)', engine: '321 бензин', power: 34 },
+    { name: '689 см³ (74 л.с.)', engine: '689 бензин', power: 74 },
+    { name: '847 см³ (115 л.с.)', engine: '847 бензин', power: 115 },
+    { name: '1000 см³ (200 л.с.)', engine: '1000 бензин', power: 200 },
+    { name: '1200 см³ (125 л.с.)', engine: '1200 бензин', power: 125 },
+  ],
+  special: [
+    { name: '4.4 дизель (74 кВт)', engine: '4.4 дизель', power: 100 },
+    { name: '4.5 дизель (109 л.с.)', engine: '4.5 дизель', power: 109 },
+    { name: '6.7 дизель (155 л.с.)', engine: '6.7 дизель', power: 155 },
+    { name: '8.3 дизель (240 л.с.)', engine: '8.3 дизель', power: 240 },
+    { name: '5.9 дизель (130 л.с.)', engine: '5.9 дизель', power: 130 },
+  ],
+}
 
 function slugify(value: string): string {
   const map: Record<string, string> = {
@@ -236,18 +263,20 @@ export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as Vehic
               model_name: model.name,
               year_start: model.years[0] + generationIndex * 5,
               year_end: model.years[1],
-              modifications: MODIFICATION_SEEDS.slice(0, 2 + (generationIndex % 3)).map((modification, index) => ({
-                id: seq++,
-                name: modification.name,
-                slug: `${generationSlug}-mod-${index + 1}`,
-                vehicle_type: kind,
-                brand_slug: brandSlug,
-                model_slug: modelSlug,
-                generation_slug: generationSlug,
-                generation_name: `${model.name} ${generation}`,
-                engine: modification.engine,
-                power: modification.power,
-              })),
+              modifications: MODIFICATION_SEEDS[kind]
+                .slice(0, 2 + (generationIndex % 3))
+                .map((modification, index) => ({
+                  id: seq++,
+                  name: modification.name,
+                  slug: `${generationSlug}-mod-${index + 1}`,
+                  vehicle_type: kind,
+                  brand_slug: brandSlug,
+                  model_slug: modelSlug,
+                  generation_slug: generationSlug,
+                  generation_name: `${model.name} ${generation}`,
+                  engine: modification.engine,
+                  power: modification.power,
+                })),
             }
           }),
         }

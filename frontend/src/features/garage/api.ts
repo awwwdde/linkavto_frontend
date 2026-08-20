@@ -3,11 +3,17 @@ import type { GarageOption, GarageVehicle, VehicleType } from '@/shared/api/type
 
 export const fetchGarageVehicles = () => get<GarageVehicle[]>('garage/vehicles/')
 
+/**
+ * Названия, а не id: каскад подбора работает со слагами справочника, а гараж
+ * хранит человекочитаемые поля. Раньше форма слала `make_id/model_id`, которых
+ * бэк не читает, и любой автомобиль сохранялся как значение по умолчанию.
+ */
 export interface CreateVehiclePayload {
   vehicle_type?: VehicleType
-  make_id?: number
-  model_id?: number
-  modification_id?: number
+  make?: string
+  model?: string
+  generation?: string
+  modification?: string
   vin?: string
 }
 

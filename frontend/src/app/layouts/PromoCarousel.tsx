@@ -12,6 +12,13 @@ import { Img, Skeleton } from '@/shared/ui'
 const AUTOPLAY_MS = 6000
 
 /**
+ * До lg размер задаётся пропорцией — на узких экранах фиксированная высота
+ * обрезала картинку. На десктопе высота прежняя: следующий блок наезжает на
+ * баннер на 160px (§4б, шов), и при меньшей высоте нахлёст съедал кнопку.
+ */
+const CAROUSEL_SIZE = 'aspect-[4/3] sm:aspect-[16/9] lg:aspect-auto lg:h-[60rem]'
+
+/**
  * §4б зона 1: карусель рекламных баннеров во всю ширину; шапка плавает поверх.
  * Первый баннер — LCP (priority). Автосмена ~6с с паузой при hover,
  * уважает prefers-reduced-motion (§11). Метка «Реклама» и точки-пагинация.
@@ -35,7 +42,7 @@ export function PromoCarousel() {
   }, [reduced, paused, count])
 
   if (banners.isPending) {
-    return <Skeleton className="h-80 w-full rounded-none lg:h-[57rem]" />
+    return <Skeleton className={cn('w-full rounded-none', CAROUSEL_SIZE)} />
   }
 
   if (count === 0) return null
@@ -46,7 +53,7 @@ export function PromoCarousel() {
     <section
       aria-roledescription="carousel"
       aria-label={t('home.promo')}
-      className="relative h-80 w-full overflow-hidden lg:h-[57rem]"
+      className={cn('relative w-full overflow-hidden', CAROUSEL_SIZE)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -55,12 +62,15 @@ export function PromoCarousel() {
       ))}
 
       {/* Метка «Реклама» (§4б). */}
-      <span className="absolute bottom-6 left-8 rounded-pill bg-ink/55 px-2.5 py-1 text-xs text-white">
+      {/* Метка и точки подняты над швом: следующий блок наезжает снизу на 24px
+          на мобильном и на 160px на десктопе, и в прежней позиции они прятались
+          под ним целиком. */}
+      <span className="absolute bottom-10 left-8 rounded-pill bg-ink/55 px-2.5 py-1 text-xs text-white lg:bottom-46">
         {t('home.adLabel')}
       </span>
 
       {count > 1 ? (
-        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-1.5" role="tablist">
+        <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 gap-1.5 lg:bottom-46" role="tablist">
           {items.map((banner, i) => (
             <button
               key={banner.id}

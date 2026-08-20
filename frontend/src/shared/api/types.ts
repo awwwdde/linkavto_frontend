@@ -251,6 +251,7 @@ export interface GarageVehicle {
   vehicle_type: VehicleType
   make: string
   model: string
+  generation: string | null
   modification: string
   year: number | null
   vin: string | null

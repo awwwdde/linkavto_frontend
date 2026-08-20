@@ -736,18 +736,27 @@ export const handlers = [
 
   http.post(`${BASE}/garage/vehicles/`, async ({ request }) => {
     await delay(300)
-    const body = (await request.json()) as { vin?: string; make?: string; model?: string; modification?: string }
+    const body = (await request.json()) as {
+      vin?: string
+      vehicle_type?: VehicleType
+      make?: string
+      model?: string
+      generation?: string
+      modification?: string
+    }
     const vehicle: GarageVehicle = {
       id: ++vehicleSeq,
-      vehicle_type: 'car' as VehicleType,
-      make: body.make ?? 'Lada',
-      model: body.model ?? 'Vesta',
-      modification: body.modification ?? '1.6 MT (106 л.с.)',
+      vehicle_type: body.vehicle_type ?? ('car' as VehicleType),
+      make: body.make ?? '',
+      model: body.model ?? '',
+      generation: body.generation ?? null,
+      modification: body.modification ?? '',
       year: 2020,
       vin: body.vin ?? null,
+      // Заголовок собираем из того, что реально выбрали, а не из заглушки.
       title: body.vin
         ? `Автомобиль по VIN ${body.vin.slice(-6)}`
-        : `${body.make ?? 'Lada'} ${body.model ?? 'Vesta'} ${body.modification ?? ''}`.trim(),
+        : [body.make, body.model, body.modification].filter(Boolean).join(' ') || 'Автомобиль',
     }
     vehicles.push(vehicle)
     return HttpResponse.json(vehicle, { status: 201 })

@@ -22,7 +22,8 @@ const SHORTCUTS: { slug: string; label: string }[] = [
   { slug: 'legkovye/dvigatel', label: 'Двигатель' },
   { slug: 'legkovye/podveska', label: 'Подвеска' },
   { slug: 'legkovye/transmissiya', label: 'Трансмиссия' },
-  { slug: 'legkovye/elektrika', label: 'Электрика и фары' },
+  { slug: 'legkovye/elektrika', label: 'Электрика' },
+  { slug: 'legkovye/kuzov/optika', label: 'Фары и оптика' },
   { slug: 'legkovye/tormoznaya-sistema', label: 'Тормозная система' },
 ]
 

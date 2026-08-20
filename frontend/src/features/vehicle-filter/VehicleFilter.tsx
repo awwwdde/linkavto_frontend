@@ -241,8 +241,6 @@ export function VehicleFilter({ className, mode = 'full', lockedKind = null }: V
         </div>
       ) : collapsible && !expanded ? null : (
         <>
-          <p className="text-sm text-ink-muted">{t('vehicleFilter.hint')}</p>
-
           {garageVehicle ? (
             <Button variant="secondary" onClick={() => setParam('garage_vehicle_id', String(garageVehicle.id))}>
               {t('vehicleFilter.fromGarage')}

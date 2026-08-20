@@ -119,7 +119,7 @@ export function Component() {
                 />
               </div>
 
-              {types.length > 1 ? (
+              {types.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {(['all', ...types] as const).map((value) => {
                     const label = value === 'all' ? t('garage.allTypes') : t(`vehicleType.${value}`)

@@ -1,76 +1,13 @@
-import type { CategoryDetail, ProductListResponse, TireWheelFacets } from '@/shared/api/types'
-import { t, type TranslationKey } from '@/shared/i18n'
-import { Button, Checkbox, Select } from '@/shared/ui'
+import { Link } from 'react-router'
+import type { CategoryDetail, ProductListResponse } from '@/shared/api/types'
+import { categoryHref } from '@/entities/category/tree'
+import { t } from '@/shared/i18n'
+import { Button, Checkbox } from '@/shared/ui'
 import { VehicleFilter } from '@/features/vehicle-filter/VehicleFilter'
 import { filterProfile } from './filter-profile'
 import { PriceHistogramSlider } from './PriceHistogramSlider'
 import { FacetGroup } from './FacetGroup'
-import { useCatalogParams, type TireWheelKey } from './useCatalogParams'
-
-const TIRE_WHEEL_FIELDS: { key: TireWheelKey; facet: keyof TireWheelFacets; labelKey: TranslationKey }[] = [
-  { key: 'tire_diameter', facet: 'tire_diameter', labelKey: 'tires.diameter' },
-  { key: 'tire_width', facet: 'tire_width', labelKey: 'tires.width' },
-  { key: 'tire_height', facet: 'tire_height', labelKey: 'tires.height' },
-  { key: 'tire_seasonality', facet: 'tire_seasonality', labelKey: 'tires.seasonality' },
-  { key: 'wheel_diameter', facet: 'wheel_diameter', labelKey: 'tires.diameter' },
-  { key: 'wheel_width', facet: 'wheel_width', labelKey: 'tires.width' },
-  { key: 'wheel_pcd', facet: 'wheel_pcd', labelKey: 'tires.pcd' },
-  { key: 'wheel_offset_type', facet: 'wheel_offset_type', labelKey: 'tires.offsetType' },
-  { key: 'wheel_type', facet: 'wheel_type', labelKey: 'tires.wheelType' },
-]
-
-/** Профильные фильтры показываются только там, где бэк прислал их фасеты. */
-function TireWheelFilters({ facets }: { facets: TireWheelFacets }) {
-  const { params, setParam } = useCatalogParams()
-  const kind = params.tireWheel['tire_wheel_type'] ?? 'tire'
-
-  const fields = TIRE_WHEEL_FIELDS.filter((field) =>
-    kind === 'wheel' ? field.key.startsWith('wheel_') : field.key.startsWith('tire_'),
-  )
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">{t('tires.title')}</h2>
-
-      <Select
-        label={t('tires.kind')}
-        value={kind}
-        onChange={(event) => setParam('tire_wheel_type', event.target.value)}
-      >
-        <option value="tire">{t('tires.tire')}</option>
-        <option value="wheel">{t('tires.wheel')}</option>
-      </Select>
-
-      {fields.map((field) => {
-        const options = facets[field.facet]
-        if (options.length === 0) return null
-        return (
-          <Select
-            key={field.key}
-            label={t(field.labelKey)}
-            value={params.tireWheel[field.key] ?? ''}
-            onChange={(event) => setParam(field.key, event.target.value || null)}
-          >
-            <option value="">{t('common.all')}</option>
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label} ({option.count})
-              </option>
-            ))}
-          </Select>
-        )
-      })}
-
-      {kind === 'tire' ? (
-        <Checkbox
-          checked={params.tireWheel['tire_spikes'] === 'true'}
-          onChange={(event) => setParam('tire_spikes', event.target.checked ? 'true' : null)}
-          label={t('tires.spikes')}
-        />
-      ) : null}
-    </section>
-  )
-}
+import { useCatalogParams } from './useCatalogParams'
 
 /** Названия фасетов, у которых в панели есть собственный блок. */
 const DEDICATED_FACETS = new Set([
@@ -92,21 +29,37 @@ export function CatalogFilters({ data, category, onApplied }: CatalogFiltersProp
 
   const min = data?.facets.price_min ?? 0
   const max = data?.facets.price_max ?? 0
-  const tireWheelFacets = data?.facets.tire_wheel ?? null
   const profile = filterProfile(category?.vehicle_type)
+
+  const children = category?.children ?? []
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Категория сужает выдачу сильнее любого фасета, поэтому идёт первой.
+          Это навигация, а не фильтр: выбор меняет раздел, а не параметр. */}
+      {children.length > 0 ? (
+        <nav aria-label={t('catalog.subcategories')} className="flex flex-col gap-2">
+          <h2 className="text-base font-semibold">{t('catalog.subcategories')}</h2>
+          <ul className="flex flex-col">
+            {children.map((child) => (
+              <li key={child.id}>
+                <Link
+                  to={categoryHref(child.path)}
+                  onClick={onApplied}
+                  className="flex min-h-9 items-baseline justify-between gap-3 text-base text-ink-muted transition-colors duration-[--duration-fast] hover:text-ink"
+                >
+                  <span className="truncate">{child.name}</span>
+                  <span className="text-sm tabular-nums">{child.products_count}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+
       <VehicleFilter mode={profile.vehicleMode} lockedKind={profile.lockedKind} />
 
       <hr className="border-line" />
-
-      {tireWheelFacets ? (
-        <>
-          <TireWheelFilters facets={tireWheelFacets} />
-          <hr className="border-line" />
-        </>
-      ) : null}
 
       {max > min ? (
         <fieldset className="flex flex-col gap-3">

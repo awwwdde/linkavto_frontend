@@ -1,35 +1,68 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { GarageVehicle } from '@/shared/api/types'
-import { queryKeys } from '@/shared/api/query-keys'
+import type { GarageVehicle, VehicleKind } from '@/shared/api/types'
 import { t } from '@/shared/i18n'
+import { cn } from '@/shared/lib/cn'
 import { Button, Input, Select, Tabs, toast } from '@/shared/ui'
 import { ApiError } from '@/shared/api/client'
 import { isValidVin } from '@/features/search/detect'
-import { createGarageVehicle, fetchMakes, fetchModels, fetchModifications } from './api'
+import {
+  fetchVehicleBrands,
+  fetchVehicleGenerations,
+  fetchVehicleModels,
+  fetchVehicleModifications,
+} from '@/features/vehicle-filter/api'
+import { createGarageVehicle } from './api'
 import { useGarageStore } from './store'
 
 type Mode = 'model' | 'vin'
 
+const KINDS: { value: VehicleKind; labelKey: Parameters<typeof t>[0] }[] = [
+  { value: 'car', labelKey: 'vehicleType.car' },
+  { value: 'truck', labelKey: 'vehicleType.truck' },
+  { value: 'moto', labelKey: 'vehicleType.moto' },
+  { value: 'special', labelKey: 'vehicleType.special' },
+]
+
+interface Picked {
+  slug: string
+  name: string
+}
+
+/**
+ * Добавление техники в гараж. Каскад берёт те же справочники, что и подбор в
+ * каталоге, — раньше форма ходила в отдельные ручки `garage/*`, где модели
+ * всегда были от Lada, а поколений не было вовсе.
+ */
 export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
   const [mode, setMode] = useState<Mode>('model')
-  const [makeId, setMakeId] = useState<number | null>(null)
-  const [modelId, setModelId] = useState<number | null>(null)
-  const [modificationId, setModificationId] = useState<number | null>(null)
+  const [kind, setKind] = useState<VehicleKind>('car')
+  const [brand, setBrand] = useState<Picked | null>(null)
+  const [model, setModel] = useState<Picked | null>(null)
+  const [generation, setGeneration] = useState<Picked | null>(null)
+  const [modification, setModification] = useState<Picked | null>(null)
   const [vin, setVin] = useState('')
   const [vinError, setVinError] = useState<string | undefined>(undefined)
   const addVehicle = useGarageStore((state) => state.addVehicle)
 
-  const makes = useQuery({ queryKey: queryKeys.garage.makes('car'), queryFn: () => fetchMakes('car') })
+  const brands = useQuery({
+    queryKey: ['vehicle', 'brands', kind, null],
+    queryFn: () => fetchVehicleBrands(kind, null),
+  })
   const models = useQuery({
-    queryKey: queryKeys.garage.models(makeId),
-    queryFn: () => fetchModels(makeId!),
-    enabled: makeId !== null,
+    queryKey: ['vehicle', 'models', kind, brand?.slug],
+    queryFn: () => fetchVehicleModels(kind, brand!.slug),
+    enabled: Boolean(brand),
+  })
+  const generations = useQuery({
+    queryKey: ['vehicle', 'generations', kind, model?.slug],
+    queryFn: () => fetchVehicleGenerations(kind, model!.slug),
+    enabled: Boolean(model),
   })
   const modifications = useQuery({
-    queryKey: queryKeys.garage.modifications(modelId),
-    queryFn: () => fetchModifications(modelId!),
-    enabled: modelId !== null,
+    queryKey: ['vehicle', 'modifications', kind, generation?.slug],
+    queryFn: () => fetchVehicleModifications(kind, generation!.slug),
+    enabled: Boolean(generation),
   })
 
   const create = useMutation({
@@ -42,12 +75,13 @@ export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
   })
 
   const submitByModel = () => {
-    if (makeId === null || modelId === null || modificationId === null) return
+    if (!brand || !model || !modification) return
     create.mutate({
-      vehicle_type: 'car',
-      make_id: makeId,
-      model_id: modelId,
-      modification_id: modificationId,
+      vehicle_type: kind,
+      make: brand.name,
+      model: model.name,
+      ...(generation ? { generation: generation.name } : {}),
+      modification: modification.name,
     })
   }
 
@@ -61,10 +95,51 @@ export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
     create.mutate({ vin: value })
   }
 
+  /** Смена уровня обнуляет всё, что ниже: иначе остаётся несовместимая связка. */
+  const pick = (
+    list: { slug: string; name: string }[] | undefined,
+    slug: string,
+    apply: (value: Picked | null) => void,
+    resets: ((value: null) => void)[],
+  ) => {
+    const found = list?.find((item) => item.slug === slug)
+    apply(found ? { slug: found.slug, name: found.name } : null)
+    for (const clear of resets) clear(null)
+  }
+
+  /**
+   * Название шага живёт внутри поля: до выбора оно и есть подпись, после —
+   * заменяется выбранным значением. Отдельная строка-лейбл над каждым из
+   * четырёх полей удваивала высоту формы.
+   */
+  const step = (
+    label: string,
+    value: Picked | null,
+    list: { slug: string; name: string }[] | undefined,
+    disabled: boolean,
+    onPick: (slug: string) => void,
+  ) => (
+    <Select
+      aria-label={label}
+      value={value?.slug ?? ''}
+      disabled={disabled}
+      onChange={(event) => onPick(event.target.value)}
+    >
+      <option value="" disabled>
+        {label}
+      </option>
+      {(list ?? []).map((option) => (
+        <option key={option.slug} value={option.slug}>
+          {option.name}
+        </option>
+      ))}
+    </Select>
+  )
+
   return (
     <div className="flex flex-col gap-4">
       <Tabs
-        aria-label={t('garage.add')}
+        aria-label={t('garage.addVehicle')}
         value={mode}
         onChange={setMode}
         items={[
@@ -81,59 +156,49 @@ export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
             submitByModel()
           }}
         >
-          <Select
-            label={t('garage.make')}
-            value={makeId ?? ''}
-            onChange={(event) => {
-              setMakeId(Number(event.target.value))
-              setModelId(null)
-              setModificationId(null)
-            }}
-          >
-            <option value="" disabled>
-              —
-            </option>
-            {(makes.data ?? []).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </Select>
+          <fieldset>
+            <legend className="sr-only">{t('vehicleFilter.type')}</legend>
+            <div className="flex flex-wrap gap-2">
+              {KINDS.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={kind === item.value}
+                  onClick={() => {
+                    setKind(item.value)
+                    setBrand(null)
+                    setModel(null)
+                    setGeneration(null)
+                    setModification(null)
+                  }}
+                  className={cn(
+                    'flex h-10 items-center rounded-pill border px-4 text-base transition-colors duration-[--duration-fast]',
+                    kind === item.value
+                      ? 'border-ink bg-ink font-medium text-white'
+                      : 'border-line text-ink hover:border-ink-muted',
+                  )}
+                >
+                  {t(item.labelKey)}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
-          <Select
-            label={t('garage.model')}
-            value={modelId ?? ''}
-            disabled={makeId === null}
-            onChange={(event) => {
-              setModelId(Number(event.target.value))
-              setModificationId(null)
-            }}
-          >
-            <option value="" disabled>
-              —
-            </option>
-            {(models.data ?? []).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </Select>
+          {step(t('garage.make'), brand, brands.data, false, (slug) =>
+            pick(brands.data, slug, setBrand, [setModel, setGeneration, setModification]),
+          )}
 
-          <Select
-            label={t('garage.modification')}
-            value={modificationId ?? ''}
-            disabled={modelId === null}
-            onChange={(event) => setModificationId(Number(event.target.value))}
-          >
-            <option value="" disabled>
-              —
-            </option>
-            {(modifications.data ?? []).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </Select>
+          {step(t('garage.model'), model, models.data, !brand, (slug) =>
+            pick(models.data, slug, setModel, [setGeneration, setModification]),
+          )}
+
+          {step(t('vehicleFilter.generation'), generation, generations.data, !model, (slug) =>
+            pick(generations.data, slug, setGeneration, [setModification]),
+          )}
+
+          {step(t('garage.modification'), modification, modifications.data, !generation, (slug) =>
+            pick(modifications.data, slug, setModification, []),
+          )}
 
           <Button
             type="submit"
@@ -141,7 +206,7 @@ export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
             size="lg"
             block
             loading={create.isPending}
-            disabled={modificationId === null}
+            disabled={!modification}
           >
             {t('garage.add')}
           </Button>
@@ -155,8 +220,8 @@ export function GarageVehicleForm({ onDone }: { onDone?: () => void }) {
           }}
         >
           <Input
-            label={t('garage.vin')}
-            hint={t('garage.vinHint')}
+            aria-label={t('garage.vin')}
+            placeholder={t('garage.vin')}
             error={vinError}
             value={vin}
             maxLength={17}
