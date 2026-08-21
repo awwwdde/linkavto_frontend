@@ -36,30 +36,3 @@ export function slugFromPath(path: string): string {
 export function categoryHref(path: string, keepQuery?: string): string {
   return keepQuery ? `/category/${path}?${keepQuery}` : `/category/${path}`
 }
-
-/**
- * Параметры подбора техники переживают переход между категориями:
- * пользователь ищет детали под одну машину, и терять выбор при смене
- * раздела нельзя.
- */
-const VEHICLE_QUERY_KEYS = [
-  'vehicle_type',
-  'car_type',
-  'truck_type',
-  'moto_type',
-  'special_type',
-  'brand',
-  'model',
-  'generation',
-  'modification',
-  'garage_vehicle_id',
-]
-
-export function vehicleQuery(searchParams: URLSearchParams): string {
-  const kept = new URLSearchParams()
-  for (const key of VEHICLE_QUERY_KEYS) {
-    const value = searchParams.get(key)
-    if (value) kept.set(key, value)
-  }
-  return kept.toString()
-}

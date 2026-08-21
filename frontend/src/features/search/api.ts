@@ -6,12 +6,19 @@ export const fetchSuggestions = (q: string) => get<SearchSuggestion[]>('search/s
 export interface SearchParams {
   q: string
   type?: SearchMode
-  page?: number
   garage_vehicle_id?: number
+  /**
+   * Остальное — фильтры каталога как есть (`queryParams` из useCatalogParams):
+   * поиск сужается теми же фасетами, что и раздел, и незачем перечислять их
+   * здесь по одному.
+   */
+  [key: string]: string | number | boolean | undefined
 }
 
-export function fetchSearch({ q, type = 'auto', page = 1, garage_vehicle_id }: SearchParams) {
-  const params: Record<string, string | number> = { q, type, page }
-  if (garage_vehicle_id) params['garage_vehicle_id'] = garage_vehicle_id
+export function fetchSearch({ q, type = 'auto', ...rest }: SearchParams) {
+  const params: Record<string, string | number | boolean> = { q, type }
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined && value !== '') params[key] = value
+  }
   return get<SearchResponse>('search/', params)
 }

@@ -348,6 +348,33 @@ function tireWheelAttributes(
   ]
 }
 
+/**
+ * Профильные оси кузовных разделов (§1 ТЗ): у кузовных деталей — тип кузова и
+ * сторона, у оптики — сторона и расположение. Это обычные атрибуты товара,
+ * поэтому фильтруются тем же механизмом, что «Вязкость» или «Сезонность».
+ */
+const BODY_TYPES = ['Седан', 'Хэтчбек', 'Универсал', 'Внедорожник', 'Минивэн'] as const
+const SIDES = ['Левая', 'Правая'] as const
+const POSITIONS = ['Передняя', 'Задняя'] as const
+
+function sectionAttributes(names: string[], id: number): { name: string; value: string }[] {
+  const branch = names.join(' ')
+  // Оптику проверяем первой: она лежит внутри кузовной ветки, а оси у неё свои.
+  if (/фар|фонар|оптик/i.test(branch)) {
+    return [
+      { name: 'Сторона', value: SIDES[id % 2]! },
+      { name: 'Расположение', value: POSITIONS[Math.floor(id / 2) % 2]! },
+    ]
+  }
+  if (/кузов|бампер|крыл|капот|двер|зеркал|порог/i.test(branch)) {
+    return [
+      { name: 'Тип кузова', value: BODY_TYPES[id % 5]! },
+      { name: 'Сторона', value: SIDES[id % 2]! },
+    ]
+  }
+  return []
+}
+
 {
   const random = rng(20260723)
   let id = 1
@@ -449,6 +476,7 @@ function tireWheelAttributes(
           { name: 'Тип товара', value: (['Оригинал', 'Аналог'] as const)[id % 2]! },
           { name: 'Гарантия', value: (['6 месяцев', '12 месяцев', '24 месяца'] as const)[id % 3]! },
           ...tireWheelAttributes(rootType, breadcrumbs.some((crumb) => crumb.name === 'Диски'), id),
+          ...sectionAttributes(breadcrumbs.map((crumb) => crumb.name), id),
         ],
         category: {
           id: leaf.id,
@@ -494,6 +522,9 @@ export const ATTRIBUTE_FACET_DEFS: { name: string; code: string }[] = [
   { name: 'PCD', code: 'attr_pcd' },
   { name: 'Вылет', code: 'attr_offset' },
   { name: 'Тип диска', code: 'attr_wheel_type' },
+  { name: 'Тип кузова', code: 'attr_body_type' },
+  { name: 'Сторона', code: 'attr_side' },
+  { name: 'Расположение', code: 'attr_position' },
   { name: 'Тип товара', code: 'attr_grade' },
   { name: 'Гарантия', code: 'attr_warranty' },
 ]

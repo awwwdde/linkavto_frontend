@@ -14,7 +14,6 @@ import type {
   ProductListItem,
   ProductListResponse,
   SearchResponse,
-  TireWheelFacets,
   VehicleKind,
   VehicleType,
 } from '@/shared/api/types'
@@ -45,6 +44,16 @@ const BASE = '/api/v1'
 function kindParam(requestUrl: string): VehicleKind | null {
   return (new URL(requestUrl).searchParams.get('vehicle_type') as VehicleKind | null) ?? null
 }
+
+/** Счётчики товаров по уровням подбора для одного раздела каталога. */
+interface VehicleCounts {
+  brand: Map<string, number>
+  model: Map<string, number>
+  generation: Map<string, number>
+  modification: Map<string, number>
+}
+
+const vehicleCountsCache = new Map<string, VehicleCounts>()
 
 const allCategories = flatten(categoryTree)
 const bySlug = new Map(allCategories.map((node) => [node.slug, node]))
@@ -84,6 +93,42 @@ function productsOfCategory(slug: string): ProductDetail[] {
   return products.filter((product) => ids.has(product.category.id))
 }
 
+/**
+ * Сколько товаров раздела приходится на каждую марку, модель, поколение и
+ * модификацию. Бэк отдаёт это же в `products_count` справочников: без цифр
+ * пользователь выбирает вслепую и регулярно попадает в пустую выдачу.
+ */
+function vehicleCounts(categorySlug: string | null): VehicleCounts {
+  const key = categorySlug ?? '*'
+  const cached = vehicleCountsCache.get(key)
+  if (cached) return cached
+
+  const counts: VehicleCounts = { brand: new Map(), model: new Map(), generation: new Map(), modification: new Map() }
+  const bump = (map: Map<string, number>, value: string | null) => {
+    if (value) map.set(value, (map.get(value) ?? 0) + 1)
+  }
+
+  for (const product of categorySlug ? productsOfCategory(categorySlug) : products) {
+    const link = productVehicle.get(product.id)
+    if (!link) continue
+    bump(counts.brand, link.brandSlug)
+    bump(counts.model, link.modelSlug)
+    bump(counts.generation, link.generationSlug)
+    for (const slug of link.modificationSlugs) bump(counts.modification, slug)
+  }
+
+  vehicleCountsCache.set(key, counts)
+  return counts
+}
+
+/** Проставляет вариантам справочника счётчик товаров текущего раздела. */
+function withCounts<T extends { slug: string; products_count: number }>(
+  options: T[],
+  counts: Map<string, number>,
+): T[] {
+  return options.map((option) => ({ ...option, products_count: counts.get(option.slug) ?? 0 }))
+}
+
 function histogram(items: ProductDetail[]): PriceHistogramBucket[] {
   if (items.length === 0) return []
   const prices = items.map((item) => item.price)
@@ -109,51 +154,6 @@ function facetsFrom(items: ProductDetail[], pick: (product: ProductDetail) => st
     .sort((a, b) => b.count - a.count)
 }
 
-function numericFacet(values: (string | number)[]): FacetOption[] {
-  const counts = new Map<string, number>()
-  for (const value of values) {
-    const key = String(value)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-    .map(([value, count]) => ({ value, label: value, count }))
-    .sort((a, b) => Number(a.value) - Number(b.value))
-}
-
-/** Профильные фасеты отдаём только в шинных категориях (как Category.show_in='tires'). */
-function tireWheelFacetsFor(slug: string): TireWheelFacets | null {
-  const node = bySlug.get(slug)
-  if (!node || node.show_in !== 'tires') return null
-  return {
-    tire_diameter: numericFacet([13, 14, 15, 16, 17, 18, 19, 20]),
-    tire_width: numericFacet([175, 185, 195, 205, 215, 225, 235]),
-    tire_height: numericFacet([45, 50, 55, 60, 65, 70]),
-    tire_seasonality: [
-      { value: 'summer', label: 'Летние', count: 42 },
-      { value: 'winter', label: 'Зимние', count: 38 },
-      { value: 'all-season', label: 'Всесезонные', count: 12 },
-    ],
-    wheel_diameter: numericFacet([14, 15, 16, 17, 18, 19]),
-    wheel_width: numericFacet([5.5, 6, 6.5, 7, 7.5, 8]),
-    wheel_pcd: [
-      { value: '4x98', label: '4×98', count: 18 },
-      { value: '4x100', label: '4×100', count: 26 },
-      { value: '5x108', label: '5×108', count: 21 },
-      { value: '5x114.3', label: '5×114.3', count: 33 },
-    ],
-    wheel_offset_type: [
-      { value: 'et35', label: 'ET35', count: 14 },
-      { value: 'et40', label: 'ET40', count: 22 },
-      { value: 'et45', label: 'ET45', count: 17 },
-    ],
-    wheel_type: [
-      { value: 'alloy', label: 'Литой', count: 40 },
-      { value: 'steel', label: 'Штампованный', count: 25 },
-      { value: 'forged', label: 'Кованый', count: 9 },
-    ],
-  }
-}
-
 function sortProducts(items: ProductDetail[], sort: string | null): ProductDetail[] {
   const sorted = [...items]
   switch (sort) {
@@ -169,16 +169,26 @@ function sortProducts(items: ProductDetail[], sort: string | null): ProductDetai
   }
 }
 
-/** Каскад подбора: те же имена параметров, что и в shop/views.py. */
+/** Мультизначный параметр (`?brand=lada,kia`); пусто — фильтр не задан. */
+function csvSet(url: URL, key: string): Set<string> | null {
+  const values = (url.searchParams.get(key) ?? '').split(',').filter(Boolean)
+  return values.length > 0 ? new Set(values) : null
+}
+
+/**
+ * Каскад подбора: те же имена параметров, что и в shop/views.py. На каждом
+ * уровне значений может быть несколько — внутри уровня они складываются по ИЛИ,
+ * уровни между собой — по И.
+ */
 function applyVehicleFilters(items: ProductDetail[], url: URL): ProductDetail[] {
   const kind = url.searchParams.get('vehicle_type') as VehicleKind | null
   if (!kind) return items
 
   const classSlug = url.searchParams.get(CLASS_PARAM[kind])
-  const brand = url.searchParams.get('brand')
-  const model = url.searchParams.get('model')
-  const generation = url.searchParams.get('generation')
-  const modification = url.searchParams.get('modification')
+  const brands = csvSet(url, 'brand')
+  const models = csvSet(url, 'model')
+  const generations = csvSet(url, 'generation')
+  const modifications = csvSet(url, 'modification')
 
   return items.filter((product) => {
     const link = productVehicle.get(product.id)
@@ -187,20 +197,36 @@ function applyVehicleFilters(items: ProductDetail[], url: URL): ProductDetail[] 
     if (link.kind === 'universal') return true
     if (link.kind !== kind) return false
     if (classSlug && !link.classSlugs.includes(classSlug)) return false
-    if (brand && link.brandSlug !== brand) return false
-    if (model && link.modelSlug !== model) return false
-    if (generation && link.generationSlug !== generation) return false
-    if (modification && !link.modificationSlugs.includes(modification)) return false
+    if (brands && (!link.brandSlug || !brands.has(link.brandSlug))) return false
+    if (models && (!link.modelSlug || !models.has(link.modelSlug))) return false
+    if (generations && (!link.generationSlug || !generations.has(link.generationSlug))) return false
+    if (modifications && !link.modificationSlugs.some((slug) => modifications.has(slug))) return false
     return true
   })
 }
 
-function listResponse(source: ProductDetail[], url: URL, categorySlug: string | null): ProductListResponse {
+/**
+ * Фильтр «Категория»: в `category_in` приходят слаги отмеченных веток, а
+ * разворачивает ветку в поддерево бэкенд — фронту дерево пересказывать не надо.
+ */
+function applyCategoryFilter(items: ProductDetail[], url: URL): ProductDetail[] {
+  const slugs = (url.searchParams.get('category_in') ?? '').split(',').filter(Boolean)
+  if (slugs.length === 0) return items
+  const ids = new Set(
+    slugs.flatMap((slug) => {
+      const node = bySlug.get(slug)
+      return node ? flatten([node]).map((item) => item.id) : []
+    }),
+  )
+  return items.filter((product) => ids.has(product.category.id))
+}
+
+function listResponse(source: ProductDetail[], url: URL): ProductListResponse {
   const page = Number(url.searchParams.get('page') ?? 1)
   const pageSize = Number(url.searchParams.get('page_size') ?? 24)
   const vehicleId = url.searchParams.get('garage_vehicle_id')
 
-  let items = applyVehicleFilters(source, url)
+  let items = applyCategoryFilter(applyVehicleFilters(source, url), url)
 
   const priceMin = url.searchParams.get('price_min')
   const priceMax = url.searchParams.get('price_max')
@@ -258,7 +284,6 @@ function listResponse(source: ProductDetail[], url: URL, categorySlug: string | 
       product_brands: facetsFrom(source, productBrandOf),
       price_min: prices.length ? Math.min(...prices) : 0,
       price_max: prices.length ? Math.max(...prices) : 0,
-      tire_wheel: categorySlug ? tireWheelFacetsFor(categorySlug) : null,
       attributes: attributeFacetsFrom(source),
     },
   }
@@ -450,25 +475,33 @@ export const handlers = [
   http.get(`${BASE}/catalog/brands/`, async ({ request }) => {
     await delay(120)
     const url = new URL(request.url)
-    return HttpResponse.json(brandsOf(kindParam(request.url), url.searchParams.get('class')))
+    const counts = vehicleCounts(url.searchParams.get('category'))
+    return HttpResponse.json(withCounts(brandsOf(kindParam(request.url), url.searchParams.get('class')), counts.brand))
   }),
 
   http.get(`${BASE}/catalog/models/`, async ({ request }) => {
     await delay(120)
     const url = new URL(request.url)
-    return HttpResponse.json(modelsOf(kindParam(request.url), url.searchParams.get('brand')))
+    const counts = vehicleCounts(url.searchParams.get('category'))
+    return HttpResponse.json(withCounts(modelsOf(kindParam(request.url), url.searchParams.get('brand')), counts.model))
   }),
 
   http.get(`${BASE}/catalog/generations/`, async ({ request }) => {
     await delay(120)
     const url = new URL(request.url)
-    return HttpResponse.json(generationsOf(kindParam(request.url), url.searchParams.get('model')))
+    const counts = vehicleCounts(url.searchParams.get('category'))
+    return HttpResponse.json(
+      withCounts(generationsOf(kindParam(request.url), url.searchParams.get('model')), counts.generation),
+    )
   }),
 
   http.get(`${BASE}/catalog/modifications/`, async ({ request }) => {
     await delay(120)
     const url = new URL(request.url)
-    return HttpResponse.json(modificationsOf(kindParam(request.url), url.searchParams.get('generation')))
+    const counts = vehicleCounts(url.searchParams.get('category'))
+    return HttpResponse.json(
+      withCounts(modificationsOf(kindParam(request.url), url.searchParams.get('generation')), counts.modification),
+    )
   }),
 
   /* --- Товары --- */
@@ -480,7 +513,7 @@ export const handlers = [
     const seller = url.searchParams.get('seller')
     let source = category ? productsOfCategory(category) : products
     if (seller) source = source.filter((product) => product.id % sellers.length === Number(seller) % sellers.length)
-    return HttpResponse.json(listResponse(source, url, category))
+    return HttpResponse.json(listResponse(source, url))
   }),
 
   http.get(`${BASE}/products/:slug/offers/`, async ({ params }) => {
@@ -663,12 +696,9 @@ export const handlers = [
       source = products.filter((item) => item.name.toLowerCase().includes(needle))
     }
 
-    const base = listResponse(source, url, null)
+    const base = listResponse(source, url)
     const response: SearchResponse = {
-      count: base.count,
-      next: base.next,
-      previous: base.previous,
-      results: base.results,
+      ...base,
       resolved_mode: mode,
       vehicle: mode === 'vin' ? (vehicles[0] ?? null) : null,
       categories: allCategories

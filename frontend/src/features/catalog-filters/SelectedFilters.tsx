@@ -11,7 +11,8 @@ import {
   fetchVehicleModifications,
 } from '@/features/vehicle-filter/api'
 import { useActiveVehicle } from '@/features/garage/store'
-import { useCatalogParams, type VehicleLevel } from './useCatalogParams'
+import { useCategorySelection } from './category-selection'
+import { CATEGORY_PARAM, CLASS_PARAM, useCatalogParams } from './useCatalogParams'
 
 const KIND_LABEL: Record<string, string> = {
   car: 'Легковые',
@@ -43,7 +44,18 @@ function FilterTag({ tag }: { tag: Tag }) {
   )
 }
 
-export function SelectedFilters({ className }: { className?: string }) {
+export function SelectedFilters({
+  className,
+  categorySlug = '',
+  attributeLabels,
+}: {
+  className?: string
+  /** Текущая категория — по ней теги подкатегорий снимаются по правилу
+      «одна отметка — путь» (см. category-selection.ts). */
+  categorySlug?: string
+  /** `attr_side` → «Сторона». Без имени оси значение вроде «Левая» ни о чём. */
+  attributeLabels?: Record<string, string>
+}) {
   const { params, applyVehicle, setParam, toggleInList, reset, activeCount } = useCatalogParams()
   const garageVehicle = useActiveVehicle()
   const kind = params.vehicleType
@@ -55,36 +67,31 @@ export function SelectedFilters({ className }: { className?: string }) {
     enabled: Boolean(params.vehicleClass),
   })
   const brands = useQuery({
-    queryKey: ['vehicle', 'brands', kind, params.vehicleClass],
-    queryFn: () => fetchVehicleBrands(kind, params.vehicleClass),
-    enabled: Boolean(params.brand),
+    queryKey: ['vehicle', 'brands', kind, params.vehicleClass, categorySlug || null],
+    queryFn: () => fetchVehicleBrands(kind, params.vehicleClass, categorySlug || null),
+    enabled: params.brands.length > 0,
   })
   const models = useQuery({
-    queryKey: ['vehicle', 'models', kind, params.brand],
-    queryFn: () => fetchVehicleModels(kind, params.brand),
-    enabled: Boolean(params.model),
+    queryKey: ['vehicle', 'models', kind, params.brands, categorySlug || null],
+    queryFn: () => fetchVehicleModels(kind, params.brands, categorySlug || null),
+    enabled: params.models.length > 0,
   })
   const generations = useQuery({
-    queryKey: ['vehicle', 'generations', kind, params.model],
-    queryFn: () => fetchVehicleGenerations(kind, params.model),
-    enabled: Boolean(params.generation),
+    queryKey: ['vehicle', 'generations', kind, params.models, categorySlug || null],
+    queryFn: () => fetchVehicleGenerations(kind, params.models, categorySlug || null),
+    enabled: params.generations.length > 0,
   })
   const modifications = useQuery({
-    queryKey: ['vehicle', 'modifications', kind, params.generation],
-    queryFn: () => fetchVehicleModifications(kind, params.generation),
-    enabled: Boolean(params.modification),
+    queryKey: ['vehicle', 'modifications', kind, params.generations, categorySlug || null],
+    queryFn: () => fetchVehicleModifications(kind, params.generations, categorySlug || null),
+    enabled: params.generations.length > 0,
   })
+  const categories = useCategorySelection(categorySlug)
 
   const nameOf = (options: { slug: string; name: string }[] | undefined, slug: string) =>
     options?.find((option) => option.slug === slug)?.name ?? slug
 
   const tags: Tag[] = []
-
-  const vehicleTag = (level: VehicleLevel, slug: string, label: string) => ({
-    id: `${level}:${slug}`,
-    label,
-    onRemove: () => applyVehicle({ [level]: null }, level),
-  })
 
   if (params.garageVehicleId && garageVehicle) {
     tags.push({
@@ -94,15 +101,76 @@ export function SelectedFilters({ className }: { className?: string }) {
     })
   }
 
-  if (kind) tags.push(vehicleTag('vehicleType', kind, KIND_LABEL[kind] ?? kind))
-  if (params.vehicleClass)
-    tags.push(vehicleTag('vehicleClass', params.vehicleClass, nameOf(classes.data, params.vehicleClass)))
-  if (params.brand) tags.push(vehicleTag('brand', params.brand, nameOf(brands.data, params.brand)))
-  if (params.model) tags.push(vehicleTag('model', params.model, nameOf(models.data, params.model)))
-  if (params.generation)
-    tags.push(vehicleTag('generation', params.generation, nameOf(generations.data, params.generation)))
-  if (params.modification)
-    tags.push(vehicleTag('modification', params.modification, nameOf(modifications.data, params.modification)))
+  // Категория пути видна в крошках и заголовке — тегами показываем только
+  // дополнительные отметки, иначе один и тот же выбор дублируется дважды.
+  for (const slug of params.categories) {
+    tags.push({
+      id: `category:${slug}`,
+      label: categories.nameOf(slug),
+      onRemove: () => (categories.scope ? categories.toggle(slug) : toggleInList(CATEGORY_PARAM, slug)),
+    })
+  }
+
+  if (kind) {
+    tags.push({
+      id: `vehicle_type:${kind}`,
+      label: KIND_LABEL[kind] ?? kind,
+      onRemove: () =>
+        applyVehicle({ vehicleType: null, brand: [], model: [], generation: [], modification: [] }),
+    })
+  }
+  if (params.vehicleClass && kind) {
+    tags.push({
+      id: `class:${params.vehicleClass}`,
+      label: nameOf(classes.data, params.vehicleClass),
+      onRemove: () => setParam(CLASS_PARAM[kind], null),
+    })
+  }
+
+  // Снятие тега уносит и потомков: без родителя они всё равно не показываются.
+  for (const slug of params.brands) {
+    tags.push({
+      id: `brand:${slug}`,
+      label: nameOf(brands.data, slug),
+      onRemove: () =>
+        applyVehicle({
+          brand: params.brands.filter((item) => item !== slug),
+          model: [],
+          generation: [],
+          modification: [],
+        }),
+    })
+  }
+  for (const slug of params.models) {
+    tags.push({
+      id: `model:${slug}`,
+      label: nameOf(models.data, slug),
+      onRemove: () =>
+        applyVehicle({
+          model: params.models.filter((item) => item !== slug),
+          generation: [],
+          modification: [],
+        }),
+    })
+  }
+  for (const slug of params.generations) {
+    tags.push({
+      id: `generation:${slug}`,
+      label: nameOf(generations.data, slug),
+      onRemove: () =>
+        applyVehicle({
+          generation: params.generations.filter((item) => item !== slug),
+          modification: [],
+        }),
+    })
+  }
+  for (const slug of params.modifications) {
+    tags.push({
+      id: `modification:${slug}`,
+      label: nameOf(modifications.data, slug),
+      onRemove: () => applyVehicle({ modification: params.modifications.filter((item) => item !== slug) }),
+    })
+  }
 
   for (const value of params.manufacturers) {
     tags.push({ id: `manufacturer:${value}`, label: value, onRemove: () => toggleInList('manufacturer', value) })
@@ -129,9 +197,15 @@ export function SelectedFilters({ className }: { className?: string }) {
   if (params.isOriginal)
     tags.push({ id: 'is_original', label: t('catalog.isOriginal'), onRemove: () => setParam('is_original', null) })
 
-  for (const [key, value] of Object.entries(params.tireWheel)) {
-    if (!value) continue
-    tags.push({ id: `${key}:${value}`, label: `${value}`, onRemove: () => setParam(key, null) })
+  for (const [code, values] of Object.entries(params.attributes)) {
+    const axis = attributeLabels?.[code]
+    for (const value of values) {
+      tags.push({
+        id: `${code}:${value}`,
+        label: axis ? `${axis}: ${value}` : value,
+        onRemove: () => toggleInList(code, value),
+      })
+    }
   }
 
   if (tags.length === 0) return null

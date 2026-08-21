@@ -29,7 +29,7 @@ import { SORT_OPTIONS, useCatalogParams } from '@/features/catalog-filters/useCa
 
 export function Component() {
   const { id = '' } = useParams()
-  const { params: filters, setParam, setPage, activeCount, queryParams } = useCatalogParams()
+  const { params: filters, setParam, setPage, reset, activeCount, queryParams } = useCatalogParams()
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const seller = useQuery({ queryKey: queryKeys.seller(id), queryFn: () => fetchSeller(id) })
@@ -52,6 +52,13 @@ export function Component() {
 
   const info = seller.data?.seller
   const pageCount = products.data ? Math.ceil(products.data.count / PAGE_SIZE) : 0
+  /** `attr_side` → «Сторона»: теги выбранных фильтров без имени оси нечитаемы. */
+  const attributeLabels = Object.fromEntries(
+    (products.data?.facets.attributes ?? []).map((facet) => [facet.code, facet.label]),
+  )
+  const found = products.data
+    ? formatPlural(products.data.count, { one: 'товар', few: 'товара', many: 'товаров' })
+    : ''
 
   return (
     <>
@@ -143,7 +150,7 @@ export function Component() {
             </div>
           </div>
 
-          <SelectedFilters className="-mx-4 px-4 lg:mx-0 lg:px-0" />
+          <SelectedFilters attributeLabels={attributeLabels} className="-mx-4 px-4 lg:mx-0 lg:px-0" />
 
           <div className="flex gap-8">
             <aside className="hidden w-72 shrink-0 lg:block">
@@ -157,6 +164,12 @@ export function Component() {
             </aside>
 
             <div className="min-w-0 flex-1">
+              {/* Смена фильтров ничего не «говорит» вслух: выдача перерисовывается
+                  молча. Живая область проговаривает новый результат. */}
+              <p role="status" aria-live="polite" className="sr-only">
+                {products.data ? `${t('catalog.found')} ${found}` : ''}
+              </p>
+
               {products.isError ? (
                 <ErrorState onRetry={() => void products.refetch()} />
               ) : products.isPending ? (
@@ -166,10 +179,26 @@ export function Component() {
                   ))}
                 </ProductGrid>
               ) : products.data.results.length === 0 ? (
+                // Витрина без товаров и витрина, перефильтрованная в ноль, —
+                // разные ситуации: во второй помогает снять условия.
                 <EmptyState
-                  title={t('seller.emptyTitle')}
-                  text={t('seller.emptyText')}
-                  action={<ButtonLink to="/">{t('common.toCatalog')}</ButtonLink>}
+                  title={activeCount > 0 ? t('catalog.emptyFilteredTitle') : t('seller.emptyTitle')}
+                  text={
+                    activeCount > 0
+                      ? `${t('catalog.emptyFilteredText')} ${formatPlural(activeCount, {
+                          one: 'фильтр',
+                          few: 'фильтра',
+                          many: 'фильтров',
+                        })}.`
+                      : t('seller.emptyText')
+                  }
+                  action={
+                    activeCount > 0 ? (
+                      <Button onClick={reset}>{t('catalog.filtersResetAll')}</Button>
+                    ) : (
+                      <ButtonLink to="/">{t('common.toCatalog')}</ButtonLink>
+                    )
+                  }
                 />
               ) : (
                 <div className="flex flex-col gap-8">
@@ -186,11 +215,27 @@ export function Component() {
         </section>
       </Container>
 
-      <BottomSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t('catalog.filters')}>
+      <BottomSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title={t('catalog.filters')}
+        footer={
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            disabled={products.data?.count === 0}
+            onClick={() => setFiltersOpen(false)}
+          >
+            {products.data
+              ? products.data.count > 0
+                ? `${t('catalog.filtersApply')} ${found}`
+                : t('catalog.emptyFilteredTitle')
+              : t('catalog.filtersApply')}
+          </Button>
+        }
+      >
         <CatalogFilters data={products.data} />
-        <Button variant="primary" size="lg" block className="mt-6" onClick={() => setFiltersOpen(false)}>
-          {t('catalog.filtersApply')}
-        </Button>
       </BottomSheet>
     </>
   )

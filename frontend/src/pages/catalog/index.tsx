@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchCategory } from '@/entities/category/api'
-import { categoryHref, slugFromPath, vehicleQuery } from '@/entities/category/tree'
+import { categoryHref, slugFromPath } from '@/entities/category/tree'
 import { fetchProducts } from '@/entities/product/api'
 import { ProductCard, ProductCardSkeleton, ProductGrid } from '@/entities/product/ProductCard'
 import { queryKeys } from '@/shared/api/query-keys'
@@ -26,6 +26,7 @@ import {
 import { IconFilter } from '@/shared/ui/Icon'
 import { SectionHeading } from '@/app/layouts/SectionHeading'
 import { GarageContextBar } from '@/features/garage/GarageContextBar'
+import { categoryQuery } from '@/features/catalog-filters/category-selection'
 import { CatalogFilters } from '@/features/catalog-filters/CatalogFilters'
 import { SelectedFilters } from '@/features/catalog-filters/SelectedFilters'
 import { SORT_OPTIONS, useCatalogParams } from '@/features/catalog-filters/useCatalogParams'
@@ -37,10 +38,11 @@ export function Component() {
   const slug = slugFromPath(path)
   const parentPath = path.split('/').slice(0, -1).join('/')
   const [searchParams] = useSearchParams()
-  // Подбор под авто переносится в соседние категории вместе с пользователем.
-  const keepQuery = vehicleQuery(searchParams)
+  // Фильтры переезжают в соседнюю категорию вместе с пользователем — тем же
+  // правилом, что и в дереве фильтра (профильные `attr_*` при этом слетают).
+  const keepQuery = categoryQuery(searchParams).toString()
 
-  const { params: filters, setParam, setPage, activeCount, queryParams } = useCatalogParams()
+  const { params: filters, setParam, setPage, reset, activeCount, queryParams } = useCatalogParams()
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const category = useQuery({
@@ -60,6 +62,13 @@ export function Component() {
   })
 
   const pageCount = products.data ? Math.ceil(products.data.count / PAGE_SIZE) : 0
+  /** `attr_side` → «Сторона»: теги выбранных фильтров без имени оси нечитаемы. */
+  const attributeLabels = Object.fromEntries(
+    (products.data?.facets.attributes ?? []).map((facet) => [facet.code, facet.label]),
+  )
+  const found = products.data
+    ? formatPlural(products.data.count, { one: 'товар', few: 'товара', many: 'товаров' })
+    : ''
   const title = category.data?.name ?? t('catalog.title')
   const children = category.data?.children ?? []
 
@@ -69,6 +78,9 @@ export function Component() {
         title={`${title} — каталог LINKAVTO`}
         description={`${title}: подбор запчастей под конкретный автомобиль — по марке, модели, поколению и модификации.`}
         canonicalPath={`/category/${path}`}
+        // Выборка «несколько подкатегорий сразу» своего места в дереве не имеет:
+        // канонический адрес — сам раздел, а страница с `category_in` не индексируется.
+        noIndex={filters.categories.length > 0}
       />
 
       <Container className="flex flex-col gap-6 py-4 lg:py-8">
@@ -92,9 +104,7 @@ export function Component() {
           size="xl"
           lead={`${title}.`}
           ghost={
-            products.data
-              ? formatPlural(products.data.count, { one: 'товар', few: 'товара', many: 'товаров' })
-              : undefined
+            products.data ? found : undefined
           }
         />
 
@@ -136,7 +146,11 @@ export function Component() {
         ) : null}
 
         {/* Выбранные фильтры — выделенные теги, снимаются одним нажатием */}
-        <SelectedFilters className="-mx-4 px-4 lg:mx-0 lg:px-0" />
+        <SelectedFilters
+          categorySlug={slug}
+          attributeLabels={attributeLabels}
+          className="-mx-4 px-4 lg:mx-0 lg:px-0"
+        />
 
         <div className="flex items-center justify-between gap-3">
           <Button className="lg:hidden" onClick={() => setFiltersOpen(true)}>
@@ -172,6 +186,12 @@ export function Component() {
           </aside>
 
           <div className="min-w-0 flex-1">
+            {/* Смена фильтров ничего не «говорит» вслух: выдача перерисовывается
+                молча. Живая область проговаривает новый результат. */}
+            <p role="status" aria-live="polite" className="sr-only">
+              {products.data ? `${t('catalog.found')} ${found}` : ''}
+            </p>
+
             {products.isError ? (
               <ErrorState onRetry={() => void products.refetch()} />
             ) : products.isPending ? (
@@ -181,11 +201,23 @@ export function Component() {
                 ))}
               </ProductGrid>
             ) : products.data.results.length === 0 ? (
+              // Пустая выдача под фильтрами и пустая категория — разные беды:
+              // в первом случае помогает снять фильтры, во втором — уйти выше.
               <EmptyState
-                title={t('catalog.emptyTitle')}
-                text={t('catalog.emptyText')}
+                title={activeCount > 0 ? t('catalog.emptyFilteredTitle') : t('catalog.emptyTitle')}
+                text={
+                  activeCount > 0
+                    ? `${t('catalog.emptyFilteredText')} ${formatPlural(activeCount, {
+                        one: 'фильтр',
+                        few: 'фильтра',
+                        many: 'фильтров',
+                      })}.`
+                    : t('catalog.emptyText')
+                }
                 action={
-                  category.data && category.data.breadcrumbs.length > 1 ? (
+                  activeCount > 0 ? (
+                    <Button onClick={reset}>{t('catalog.filtersResetAll')}</Button>
+                  ) : category.data && category.data.breadcrumbs.length > 1 ? (
                     <ButtonLink to={categoryHref(category.data.breadcrumbs[category.data.breadcrumbs.length - 2]!.path)}>
                       {t('catalog.upOneLevel')}
                     </ButtonLink>
@@ -214,7 +246,7 @@ export function Component() {
                   {children.map((child) => (
                     <li key={child.id}>
                       <Link
-                        to={categoryHref(child.path, keepQuery)}
+                        to={categoryHref(child.path)}
                         className="flex min-h-10 items-center justify-between gap-3 text-base text-ink-muted hover:text-ink"
                       >
                         <span className="truncate">{child.name}</span>
@@ -229,11 +261,35 @@ export function Component() {
         </div>
       </Container>
 
-      <BottomSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t('catalog.filters')}>
-        <CatalogFilters data={products.data} category={category.data} />
-        <Button variant="primary" size="lg" block className="mt-6" onClick={() => setFiltersOpen(false)}>
-          {t('catalog.filtersApply')}
-        </Button>
+      <BottomSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title={t('catalog.filters')}
+        // Счётчик прибит к низу листа: фильтры ставят пачкой, и результат
+        // должен быть виден, не досматривая список до конца.
+        footer={
+          <Button
+            variant="primary"
+            size="lg"
+            block
+            disabled={products.data?.count === 0}
+            onClick={() => setFiltersOpen(false)}
+          >
+            {products.data
+              ? products.data.count > 0
+                ? `${t('catalog.filtersApply')} ${found}`
+                : t('catalog.emptyFilteredTitle')
+              : t('catalog.filtersApply')}
+          </Button>
+        }
+      >
+        {/* Выбор категории — переход: лист закрывается, иначе новую страницу
+            не видно за шторкой. */}
+        <CatalogFilters
+          data={products.data}
+          category={category.data}
+          onNavigate={() => setFiltersOpen(false)}
+        />
       </BottomSheet>
     </>
   )

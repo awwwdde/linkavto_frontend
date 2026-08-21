@@ -69,6 +69,15 @@ export interface OverlayProps {
   className?: string
 }
 
+export interface BottomSheetProps extends OverlayProps {
+  /**
+   * Закреплённый низ листа: не уезжает вместе с содержимым при прокрутке.
+   * Там живёт главное действие («Показать N товаров»), до которого иначе
+   * пришлось бы доскроллить весь список фильтров.
+   */
+  footer?: ReactNode
+}
+
 export interface ModalProps extends OverlayProps {
   /**
    * Максимальная ширина окна в пикселях. Задана числом, а не классом, потому
@@ -138,7 +147,7 @@ export function Modal({ open, onClose, title, hideTitle, children, className, ma
 }
 
 /** Мобильная шторка — тот же контракт поведения, другая геометрия (§8). */
-export function BottomSheet({ open, onClose, title, hideTitle, children, className }: OverlayProps) {
+export function BottomSheet({ open, onClose, title, hideTitle, children, className, footer }: BottomSheetProps) {
   const ref = useModalBehaviour(open, onClose)
 
   return createPortal(
@@ -180,6 +189,11 @@ export function BottomSheet({ open, onClose, title, hideTitle, children, classNa
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{children}</div>
+            {footer ? (
+              <div className="border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {footer}
+              </div>
+            ) : null}
           </motion.div>
         </div>
       ) : null}

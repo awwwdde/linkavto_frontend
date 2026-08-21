@@ -48,6 +48,12 @@ interface VehicleOptionBase {
   name: string
   slug: string
   vehicle_type: VehicleKind
+  /**
+   * Сколько товаров текущего раздела подходит этому варианту. Считается по
+   * категории из запроса (`?category=`): в «Тормозных колодках» у марки свои
+   * цифры, и без них не видно, где выбор вообще что-то даст.
+   */
+  products_count: number
 }
 
 /** Класс/тип техники: CarType «седан, хэтчбек», TruckType, MotoType, SpecialType. */
@@ -57,6 +63,8 @@ export interface VehicleBrandOption extends VehicleOptionBase {
   models_count: number
   /** Классы, в которых встречается марка. */
   class_slugs: string[]
+  /** Марка из ходовых — выносится в группу «Популярные» над общим списком. */
+  is_popular: boolean
 }
 
 export interface VehicleModelOption extends VehicleOptionBase {
@@ -64,6 +72,7 @@ export interface VehicleModelOption extends VehicleOptionBase {
   brand_name: string
   year_start: number | null
   year_end: number | null
+  is_popular: boolean
 }
 
 export interface VehicleGenerationOption extends VehicleOptionBase {
@@ -72,6 +81,8 @@ export interface VehicleGenerationOption extends VehicleOptionBase {
   model_name: string
   year_start: number | null
   year_end: number | null
+  /** Фото поколения — список поколений показывается карточками с изображением. */
+  image: ImageSet | null
 }
 
 export interface VehicleModificationOption extends VehicleOptionBase {
@@ -211,23 +222,9 @@ export interface ProductListResponse extends Paginated<ProductListItem> {
     product_brands: FacetOption[]
     price_min: number
     price_max: number
-    /** Профильные фасеты приходят только в категориях шин и дисков. */
-    tire_wheel: TireWheelFacets | null
     /** Динамические атрибутные фильтры категории (§5). */
     attributes: AttributeFacet[]
   }
-}
-
-export interface TireWheelFacets {
-  tire_diameter: FacetOption[]
-  tire_width: FacetOption[]
-  tire_height: FacetOption[]
-  tire_seasonality: FacetOption[]
-  wheel_diameter: FacetOption[]
-  wheel_width: FacetOption[]
-  wheel_pcd: FacetOption[]
-  wheel_offset_type: FacetOption[]
-  wheel_type: FacetOption[]
 }
 
 export type SearchMode = 'auto' | 'vin' | 'sku' | 'text'
@@ -239,7 +236,8 @@ export interface SearchSuggestion {
   url: string
 }
 
-export interface SearchResponse extends Paginated<ProductListItem> {
+/** Выдача поиска фильтруется теми же фасетами, что и каталог (§5). */
+export interface SearchResponse extends ProductListResponse {
   /** Как бэк в итоге распознал запрос. */
   resolved_mode: Exclude<SearchMode, 'auto'>
   vehicle: GarageVehicle | null

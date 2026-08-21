@@ -1,4 +1,5 @@
 import type {
+  ImageSet,
   VehicleBrandOption,
   VehicleClassOption,
   VehicleGenerationOption,
@@ -49,7 +50,7 @@ const CLASS_SEEDS: Record<VehicleKind, { id: number; name: string; slug: string 
 export const VEHICLE_CLASSES: Record<VehicleKind, VehicleClassOption[]> = Object.fromEntries(
   (Object.keys(CLASS_SEEDS) as VehicleKind[]).map((kind) => [
     kind,
-    CLASS_SEEDS[kind].map((item) => ({ ...item, vehicle_type: kind })),
+    CLASS_SEEDS[kind].map((item) => ({ ...item, vehicle_type: kind, products_count: 0 })),
   ]),
 ) as Record<VehicleKind, VehicleClassOption[]>
 
@@ -215,6 +216,33 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, '')
 }
 
+/**
+ * Фото поколения. Настоящие снимки приедут с бэка (CarGeneration.photo) —
+ * до тех пор рисуем узнаваемый силуэт: в списке поколений важно, что карточка
+ * с картинкой, а не какая именно машина на ней.
+ */
+function generationPhoto(label: string, tint: string): ImageSet {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+    <rect width="400" height="300" fill="${tint}" opacity="0.10"/>
+    <path d="M40 210 L70 150 Q80 132 104 130 L268 130 Q292 132 308 152 L352 196 Q360 204 360 212 L360 226 L40 226 Z" fill="${tint}" opacity="0.55"/>
+    <path d="M108 148 L262 148 L292 186 L96 186 Z" fill="#FFFFFF" opacity="0.75"/>
+    <circle cx="120" cy="226" r="26" fill="#1B1F24"/>
+    <circle cx="120" cy="226" r="11" fill="#FFFFFF" opacity="0.85"/>
+    <circle cx="296" cy="226" r="26" fill="#1B1F24"/>
+    <circle cx="296" cy="226" r="11" fill="#FFFFFF" opacity="0.85"/>
+    <text x="200" y="278" font-family="system-ui, sans-serif" font-size="22" text-anchor="middle" fill="#5C6670">${label}</text>
+  </svg>`
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  return { thumb: url, card: url, full: url, alt: label }
+}
+
+const KIND_TINT: Record<VehicleKind, string> = {
+  car: '#2757FF',
+  truck: '#B36000',
+  moto: '#A21622',
+  special: '#8A6D00',
+}
+
 export interface VehicleRecord {
   kind: VehicleKind
   classSlugs: string[]
@@ -227,7 +255,7 @@ export interface VehicleRecord {
 let seq = 1000
 
 export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as VehicleKind[]).flatMap((kind) =>
-  BRAND_SEEDS[kind].map((seed) => {
+  BRAND_SEEDS[kind].map((seed, brandIndex) => {
     const brandSlug = slugify(seed.name)
     return {
       kind,
@@ -238,9 +266,13 @@ export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as Vehic
         slug: brandSlug,
         vehicle_type: kind,
         models_count: seed.models.length,
+        products_count: 0,
         class_slugs: seed.classes,
+        // «Популярные» на бэке — отдельный флаг марки; в моке это первые
+        // марки списка, их достаточно, чтобы группа в фильтре была не пустой.
+        is_popular: brandIndex < 3,
       },
-      models: seed.models.map((model) => {
+      models: seed.models.map((model, modelIndex) => {
         const modelSlug = `${brandSlug}-${slugify(model.name)}`
         return {
           id: seq++,
@@ -251,6 +283,8 @@ export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as Vehic
           brand_name: seed.name,
           year_start: model.years[0],
           year_end: model.years[1],
+          is_popular: modelIndex < 2,
+          products_count: 0,
           generations: model.generations.map((generation, generationIndex) => {
             const generationSlug = `${modelSlug}-gen-${generationIndex + 1}`
             return {
@@ -262,7 +296,14 @@ export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as Vehic
               model_slug: modelSlug,
               model_name: model.name,
               year_start: model.years[0] + generationIndex * 5,
-              year_end: model.years[1],
+              // Поколение заканчивается там, где начинается следующее; у
+              // последнего конец берём у модели (null — «н.в.»).
+              year_end:
+                generationIndex < model.generations.length - 1
+                  ? model.years[0] + (generationIndex + 1) * 5 - 1
+                  : model.years[1],
+              image: generationPhoto(`${seed.name} ${model.name}`, KIND_TINT[kind]),
+              products_count: 0,
               modifications: MODIFICATION_SEEDS[kind]
                 .slice(0, 2 + (generationIndex % 3))
                 .map((modification, index) => ({
@@ -276,6 +317,7 @@ export const VEHICLE_INDEX: VehicleRecord[] = (Object.keys(BRAND_SEEDS) as Vehic
                   generation_name: `${model.name} ${generation}`,
                   engine: modification.engine,
                   power: modification.power,
+                  products_count: 0,
                 })),
             }
           }),
@@ -291,6 +333,15 @@ function kindsOf(kind: VehicleKind | null): VehicleKind[] {
   return kind ? [kind] : ALL_KINDS
 }
 
+/**
+ * Родитель в запросе может быть один или несколько через запятую
+ * (`?brand=lada,kia`) — пустой список означает «без ограничения».
+ */
+function parents(csv: string | null): Set<string> | null {
+  const values = (csv ?? '').split(',').filter(Boolean)
+  return values.length > 0 ? new Set(values) : null
+}
+
 export function classesOf(kind: VehicleKind | null): VehicleClassOption[] {
   return kindsOf(kind).flatMap((item) => VEHICLE_CLASSES[item])
 }
@@ -302,30 +353,33 @@ export function brandsOf(kind: VehicleKind | null, classSlug: string | null): Ve
   ).map((record) => record.brand)
 }
 
-export function modelsOf(kind: VehicleKind | null, brandSlug: string | null): VehicleModelOption[] {
+export function modelsOf(kind: VehicleKind | null, brandSlugs: string | null): VehicleModelOption[] {
   const kinds = new Set(kindsOf(kind))
-  return VEHICLE_INDEX.filter((record) => kinds.has(record.kind) && (!brandSlug || record.brand.slug === brandSlug))
+  const brands = parents(brandSlugs)
+  return VEHICLE_INDEX.filter((record) => kinds.has(record.kind) && (!brands || brands.has(record.brand.slug)))
     .flatMap((record) => record.models)
     .map(({ generations: _generations, ...model }) => model)
 }
 
-export function generationsOf(kind: VehicleKind | null, modelSlug: string | null): VehicleGenerationOption[] {
+export function generationsOf(kind: VehicleKind | null, modelSlugs: string | null): VehicleGenerationOption[] {
   const kinds = new Set(kindsOf(kind))
+  const models = parents(modelSlugs)
   return VEHICLE_INDEX.filter((record) => kinds.has(record.kind))
     .flatMap((record) => record.models)
-    .filter((model) => !modelSlug || model.slug === modelSlug)
+    .filter((model) => !models || models.has(model.slug))
     .flatMap((model) => model.generations)
     .map(({ modifications: _modifications, ...generation }) => generation)
 }
 
 export function modificationsOf(
   kind: VehicleKind | null,
-  generationSlug: string | null,
+  generationSlugs: string | null,
 ): VehicleModificationOption[] {
   const kinds = new Set(kindsOf(kind))
+  const generations = parents(generationSlugs)
   return VEHICLE_INDEX.filter((record) => kinds.has(record.kind))
     .flatMap((record) => record.models)
     .flatMap((model) => model.generations)
-    .filter((generation) => !generationSlug || generation.slug === generationSlug)
+    .filter((generation) => !generations || generations.has(generation.slug))
     .flatMap((generation) => generation.modifications)
 }
